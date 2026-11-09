@@ -184,6 +184,15 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
   </div>
 
   <div class="field">
+    <span class="lbl">Yazı tanıma (OCR)</span>
+    <div class="seg" id="ocrSeg">
+      <button data-v="tesseract">Cihazda (ücretsiz)</button>
+      <button data-v="vision">Google Vision</button>
+    </div>
+    <p class="hint">Google Vision kamera görüntüsünde çok daha isabetli okur ama API anahtarı ister. Cihazdaki motor internetsiz çalışır.</p>
+  </div>
+
+  <div class="field">
     <label for="engine">Çeviri motoru</label>
     <select id="engine">
       <option value="mymemory">MyMemory (ücretsiz, anahtarsız)</option>
@@ -196,12 +205,13 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
     <p class="hint">MyMemory anonim kullanımda günlük kotayı düşük tutar; e-posta verilirse kota yükselir.</p>
   </div>
   <div class="field" id="gField" hidden>
-    <label for="gKey">Google API anahtarı</label>
+    <label for="gKey">Google Cloud API anahtarı</label>
     <input type="password" id="gKey" placeholder="AIza…" autocomplete="off">
-    <p class="hint">Anahtar yalnızca bu tarayıcıda saklanır. Üretimde anahtarı tarayıcıya koymayın, kendi sunucunuz üzerinden çağırın.</p>
+    <p class="hint">Projede kullandığın API'ler açık olmalı: çeviri için Cloud Translation API, okuma için Cloud Vision API. Anahtar yalnızca bu tarayıcıda saklanır. Üretimde anahtarı tarayıcıya koymayın, kendi sunucunuz üzerinden çağırın.</p>
   </div>
 
   <div class="field">
+    <div class="row"><label for="autoListen">Kamera açılınca sesi de dinle</label><input type="checkbox" class="switch" id="autoListen"></div>
     <div class="row"><label for="dual">Orijinal metni de göster</label><input type="checkbox" class="switch" id="dual"></div>
     <div class="row"><label for="showStats">Gecikme ölçümlerini göster</label><input type="checkbox" class="switch" id="showStats"></div>
   </div>
@@ -245,8 +255,9 @@ const CFG = {
   moveThresh: 7,          // kareler arası ort. piksel farkı (0-255) eşiği
   sceneThresh: 14,        // son çevrilen sahneden bu kadar farklıysa yeniden oku
   gaze: 0.78,             // bakış alanı: görüntünün ortadaki oranı
-  ocrMaxW: 1100,          // OCR'a giden görüntünün en büyük genişliği
-  minConf: 55,            // paragraf güven eşiği
+  ocrW: 1400,             // OCR'a giden görüntünün hedef genişliği
+  ocrUpscale: 2,          // küçük kırpıntıyı en fazla bu kadar büyüt
+  minWordConf: 60,        // kelime güven eşiği (altındakiler atılır)
   maxItems: 6
 };
 
@@ -264,7 +275,9 @@ const S = {
   dual: store.get("dual", true),
   stats: store.get("stats", false),
   auto: store.get("auto", true),
-  speech: store.get("speech", "en")
+  speech: store.get("speech", "en"),
+  ocr: store.get("ocr", "tesseract"),
+  autoListen: store.get("autoListen", true)
 };
 
 /* ---------- DOM ---------- */
@@ -394,7 +407,10 @@ function tick(){
 }
 
 /* =====================================================================
-   OCR — Tesseract.js (cihaz üzerinde, eng+tur)
+   OCR — iki motor:
+   • Tesseract.js (cihaz üzerinde, eng+tur): ücretsiz, internetsiz, kamera
+     görüntüsünde orta kalitede. Aşağıdaki ön işleme bu yüzden var.
+   • Google Cloud Vision (bulut): kamera fotoğraflarında çok daha iyi.
    Gözlük/Android'de: Google ML Kit Text Recognition ile değiştirilir.
    ===================================================================== */
 let worker = null, workerReady = null;
@@ -402,22 +418,87 @@ function getWorker(onProgress){
   if(!workerReady){
     workerReady = Tesseract.createWorker("eng+tur", 1, {
       logger: m => { if(onProgress && m.status) onProgress(m); }
-    }).then(w => { worker = w; return w; });
+    }).then(async w => {
+      // 6 = tek düzgün metin bloğu varsayma; 3 = otomatik sayfa düzeni (ekran, menü, tabela için daha uygun)
+      await w.setParameters({ tessedit_pageseg_mode: "3", preserve_interword_spaces: "1" });
+      worker = w; return w;
+    });
   }
   return workerReady;
 }
 
 const capC = document.createElement("canvas");
 const capX = capC.getContext("2d", { willReadFrequently:true });
+const sharpC = document.createElement("canvas"); sharpC.width = 160; sharpC.height = 120;
+const sharpX = sharpC.getContext("2d", { willReadFrequently:true });
 
+/* Netlik ölçüsü: Laplace varyansı. Bulanık kare düşük, net kare yüksek puan alır. */
+function sharpness(){
+  const g = gazeRect();
+  sharpX.drawImage(source, g.x, g.y, g.w, g.h, 0, 0, 160, 120);
+  const d = sharpX.getImageData(0,0,160,120).data, W = 160, H = 120;
+  const gray = new Float32Array(W*H);
+  for(let i=0,j=0;i<d.length;i+=4,j++) gray[j] = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
+  let sum = 0, sq = 0, n = 0;
+  for(let y=1;y<H-1;y++) for(let x=1;x<W-1;x++){
+    const k = y*W+x, l = 4*gray[k] - gray[k-1] - gray[k+1] - gray[k-W] - gray[k+W];
+    sum += l; sq += l*l; n++;
+  }
+  const m = sum/n; return sq/n - m*m;
+}
+
+/* Birkaç kare arasından en netini seç (otomatik odak ve el titremesi için) */
+async function captureSharpest(count = 3, gapMs = 90){
+  if(source !== video) return captureGaze();
+  let best = -1;
+  for(let i=0;i<count;i++){
+    if(i) await new Promise(r => setTimeout(r, gapMs));
+    const sc = sharpness();
+    if(sc > best){ best = sc; captureGaze(); }
+  }
+  return { canvas:capC, g:lastCap.g, s:lastCap.s, sharp:best };
+}
+
+let lastCap = null;
 function captureGaze(){
   const g = gazeRect();
-  const s = Math.min(1, CFG.ocrMaxW / g.w);
+  // küçük yazılar için büyüt: Tesseract ~20-30 px harf yüksekliğinde en iyi okur
+  const s = Math.min(CFG.ocrUpscale, CFG.ocrW / g.w);
   capC.width = Math.round(g.w*s); capC.height = Math.round(g.h*s);
-  capX.filter = "grayscale(1) contrast(1.35)";
+  capX.imageSmoothingEnabled = true; capX.imageSmoothingQuality = "high";
   capX.drawImage(source, g.x, g.y, g.w, g.h, 0, 0, capC.width, capC.height);
-  capX.filter = "none";
-  return { canvas:capC, g, s };
+  lastCap = { canvas:capC, g, s };
+  return lastCap;
+}
+
+/* ---- Tesseract için ön işleme (saf fonksiyonlar, test edilebilir) ---- */
+function toGray(d){
+  const out = new Uint8ClampedArray(d.length/4);
+  for(let i=0,j=0;i<d.length;i+=4,j++) out[j] = (d[i]*77 + d[i+1]*150 + d[i+2]*29) >> 8;
+  return out;
+}
+function percentile(gray, p){
+  const h = new Uint32Array(256); for(const v of gray) h[v]++;
+  let acc = 0; const target = gray.length*p;
+  for(let v=0;v<256;v++){ acc += h[v]; if(acc >= target) return v; }
+  return 255;
+}
+/* Koyu zemin üstünde açık yazı mı? (koyu tema ekranlar, gece tabelaları) */
+function shouldInvert(gray){ return percentile(gray, 0.5) < 110; }
+/* Zemin koyu ise ters çevir, sonra %2–%98 aralığını 0–255'e ger */
+function normalizeGray(gray){
+  const inv = shouldInvert(gray);
+  const g2 = inv ? gray.map(v => 255 - v) : gray;
+  const lo = percentile(g2, 0.02), hi = percentile(g2, 0.98), span = Math.max(1, hi - lo);
+  return { gray: g2.map(v => (v - lo) * 255 / span), inverted: inv };
+}
+function preprocessForTesseract(canvas){
+  const ctx = canvas.getContext("2d", { willReadFrequently:true });
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { gray, inverted } = normalizeGray(toGray(img.data));
+  for(let i=0,j=0;i<img.data.length;i+=4,j++){ img.data[i] = img.data[i+1] = img.data[i+2] = gray[j]; }
+  ctx.putImageData(img, 0, 0);
+  return inverted;
 }
 
 function cleanText(t){
@@ -428,21 +509,90 @@ function letterRatio(t){
   return t.length ? letters / t.length : 0;
 }
 
-/* OCR sonucundan okunabilir paragraflar çıkar; kutuları kaynak koordinatına çevir */
-function extractBlocks(data, g, s){
+/* Bir kelime gerçek mi, çöp mü? (emoji, ikon, çizgi ve yansımalardan gelen sahte karakterler) */
+function isRealWord(text, conf){
+  const t = text.replace(/^[“"'(]+|[”"'),.:;!?]+$/g, "");
+  if(!t) return false;
+  if(/^\d+([.,:\/-]\d+)*%?$/.test(t)) return conf >= 70;                 // sayı, saat, tarih
+  if(t.length === 1) return /^[AaIiOoE&]$/.test(t) && conf >= 80;         // tek harf ancak gerçek kelimeyse
+  const letters = (t.match(/\p{L}/gu) || []).length;
+  if(letters / t.length < 0.6) return false;                              // ağırlıklı sembol
+  if(/(.)\1{3,}/.test(t)) return false;                                   // "eeee", "----"
+  if(t.length === 2 && /^[a-z][A-Z]$/.test(t)) return false;              // "gE" gibi karışık büyük/küçük
+  return conf >= CFG.minWordConf;
+}
+
+/* Kelimelerden blok kur: çöpleri at, kalanlardan metin ve kutu üret */
+function buildBlock(words){
+  const keep = words.filter(w => isRealWord(w.text, w.conf));
+  if(keep.length === 0) return null;
+  if(keep.length < 2 && words.length > 2) return null;                    // çoğu çöpse bloğu atla
+  const text = cleanText(keep.map(w => w.text).join(" "));
+  if(text.length < 2 || letterRatio(text) < 0.55) return null;
+  const x0 = Math.min(...keep.map(w => w.x0)), y0 = Math.min(...keep.map(w => w.y0));
+  const x1 = Math.max(...keep.map(w => w.x1)), y1 = Math.max(...keep.map(w => w.y1));
+  const conf = keep.reduce((a, w) => a + w.conf, 0) / keep.length;
+  return { text, conf, bb:{ x0, y0, x1, y1 } };
+}
+
+function toSourceBox(bb, g, s){
+  return { x: g.x + bb.x0/s, y: g.y + bb.y0/s, w: (bb.x1-bb.x0)/s, h: (bb.y1-bb.y0)/s };
+}
+
+/* Tesseract çıktısı → bloklar */
+function blocksFromTesseract(data, g, s){
   const out = [];
   for(const p of (data.paragraphs || [])){
-    const lines = (p.lines || []).filter(l => l.confidence >= CFG.minConf - 10);
-    const text = cleanText(lines.map(l => l.text).join(" "));
-    if(p.confidence < CFG.minConf || text.length < 2 || letterRatio(text) < 0.55) continue;
-    const b = p.bbox;
-    out.push({
-      text,
-      conf: p.confidence,
-      box: { x: g.x + b.x0/s, y: g.y + b.y0/s, w: (b.x1-b.x0)/s, h: (b.y1-b.y0)/s }
-    });
+    const words = [];
+    for(const l of (p.lines || [])) for(const w of (l.words || [])){
+      words.push({ text:w.text, conf:w.confidence, ...w.bbox });
+    }
+    const b = buildBlock(words);
+    if(b) out.push({ text:b.text, conf:b.conf, box:toSourceBox(b.bb, g, s) });
   }
   return out.slice(0, CFG.maxItems);
+}
+
+/* Google Cloud Vision: DOCUMENT_TEXT_DETECTION */
+async function ocrVision(canvas, g, s){
+  if(!S.gKey) throw new Error("Google Vision için API anahtarı gerekli (Ayarlar).");
+  const b64 = canvas.toDataURL("image/jpeg", 0.88).split(",")[1];
+  const r = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(S.gKey)}`, {
+    method:"POST", headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ requests:[{
+      image:{ content:b64 },
+      features:[{ type:"DOCUMENT_TEXT_DETECTION" }],
+      imageContext:{ languageHints:["en","tr"] }
+    }]})
+  });
+  const j = await r.json();
+  const resp = j.responses?.[0];
+  if(!r.ok || resp?.error) throw new Error((j.error || resp.error).message || `Vision HTTP ${r.status}`);
+  const out = [];
+  for(const page of (resp.fullTextAnnotation?.pages || []))
+    for(const blk of (page.blocks || []))
+      for(const p of (blk.paragraphs || [])){
+        const words = (p.words || []).map(w => {
+          const text = (w.symbols || []).map(sy => sy.text).join("");
+          const v = w.boundingBox?.vertices || [];
+          const xs = v.map(q => q.x || 0), ys = v.map(q => q.y || 0);
+          return { text, conf:(w.confidence ?? p.confidence ?? 0.9)*100,
+                   x0:Math.min(...xs), y0:Math.min(...ys), x1:Math.max(...xs), y1:Math.max(...ys) };
+        });
+        const b = buildBlock(words);
+        if(b) out.push({ text:b.text, conf:b.conf, box:toSourceBox(b.bb, g, s) });
+      }
+  return out.slice(0, CFG.maxItems);
+}
+
+/* Seçili motorla oku */
+async function readText(){
+  const cap = await captureSharpest();
+  if(S.ocr === "vision") return ocrVision(cap.canvas, cap.g, cap.s);
+  const w = await getWorker();
+  preprocessForTesseract(cap.canvas);
+  const { data } = await w.recognize(cap.canvas);
+  return blocksFromTesseract(data, cap.g, cap.s);
 }
 
 /* =====================================================================
@@ -532,11 +682,8 @@ async function runPipeline(sceneThumb){
   setStatus("busy","Okunuyor");
   const t0 = performance.now();
   try{
-    const w = await getWorker();
-    const { canvas, g, s } = captureGaze();
-    const { data } = await w.recognize(canvas);
+    const blocks = await readText();
     const t1 = performance.now();
-    const blocks = extractBlocks(data, g, s);
 
     if(!blocks.length){
       lastSceneThumb = sceneThumb || null;
@@ -651,9 +798,16 @@ let rec = null, listening = false, capLines = [], interimText = "", lastFinal = 
 
 function speechRoute(){ return S.speech === "tr" ? ["tr","en","tr-TR"] : ["en","tr","en-US"]; }
 
+/* Kamera modunda altyazı yalnızca konuşma gelince görünür, sessizlik sürerse kaybolur.
+   Sadece ses modunda ekran boş kalmasın diye "Dinliyorum…" görünür. */
+const CAP_IDLE_MS = 8000;
+let capIdleTimer = 0;
 function renderCaps(note){
-  caps.hidden = !listening && !note;
-  if(note){ caps.innerHTML = `<div class="note">${esc(note)}</div>`; return; }
+  if(note){ caps.hidden = false; caps.innerHTML = `<div class="note">${esc(note)}</div>`; return; }
+  const audioOnly = document.body.classList.contains("audio-only");
+  const hasContent = capLines.length > 0 || !!interimText;
+  caps.hidden = !listening || (!hasContent && !audioOnly);
+  if(caps.hidden) return;
   const rows = capLines.map((c, i) => {
     const old = i < capLines.length - 1 ? " old" : "";
     const main = c.err ? `<span class="wait">${esc(c.err)}</span>`
@@ -662,7 +816,11 @@ function renderCaps(note){
     return `<div class="cap${old}">${main}${src}</div>`;
   }).join("");
   const interim = interimText ? `<div class="interim">${esc(interimText)}…</div>` : "";
-  caps.innerHTML = rows || interim ? rows + interim : `<div class="note">Dinliyorum…</div>`;
+  caps.innerHTML = hasContent ? rows + interim : `<div class="note">Dinliyorum…</div>`;
+  if(hasContent && !audioOnly){
+    clearTimeout(capIdleTimer);
+    capIdleTimer = setTimeout(() => { if(!interimText){ capLines = []; renderCaps(); } }, CAP_IDLE_MS);
+  }
 }
 
 function addCaption(text){
@@ -733,7 +891,9 @@ function syncUI(){
   for(const b of $("viewSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.view);
   $("engine").value = S.engine;
   $("mmField").hidden = S.engine !== "mymemory";
-  $("gField").hidden = S.engine !== "google";
+  $("gField").hidden = S.engine !== "google" && S.ocr !== "vision";
+  for(const b of $("ocrSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.ocr);
+  $("autoListen").checked = S.autoListen;
   $("mmEmail").value = S.mmEmail; $("gKey").value = S.gKey;
   $("dual").checked = S.dual; $("showStats").checked = S.stats;
   for(const b of $("speechSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.speech);
@@ -744,7 +904,7 @@ function syncUI(){
 }
 function setS(k, v){
   S[k] = v; store.set(k, v); syncUI();
-  if(["dir","engine"].includes(k)){ lastSceneThumb = null; }       // yeniden çevir
+  if(["dir","engine","ocr"].includes(k)){ lastSceneThumb = null; }       // yeniden çevir
   if(lastResult && ["view","dual","stats"].includes(k)) render(lastResult);
   if(k === "dual" && listening) renderCaps();
   if(k === "speech" && listening) startListening();                  // yeni dille yeniden başlat
@@ -757,6 +917,8 @@ $("mmEmail").addEventListener("change", e => setS("mmEmail", e.target.value.trim
 $("gKey").addEventListener("change", e => setS("gKey", e.target.value.trim()));
 $("dual").addEventListener("change", e => setS("dual", e.target.checked));
 $("showStats").addEventListener("change", e => setS("stats", e.target.checked));
+$("ocrSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("ocr", v); });
+$("autoListen").addEventListener("change", e => setS("autoListen", e.target.checked));
 $("speechSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("speech", v); });
 $("micBtn").addEventListener("click", () => { listening ? stopListening() : startListening(); });
 $("autoBtn").addEventListener("click", () => setS("auto", !S.auto));
@@ -789,6 +951,7 @@ document.addEventListener("visibilitychange", () => { if(document.visibilityStat
 
 $("start").addEventListener("click", async () => {
   $("introErr").textContent = "";
+  if(S.autoListen && SR) startListening();
   try{
     await startCamera();
     $("intro").hidden = true;

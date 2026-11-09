@@ -15,7 +15,7 @@ Canlı adres: https://tarikbugrayeter.github.io/lens-ceviri/
 mikrofon → konuşma tanıma (Web Speech API) → cümle bitince çeviri → altyazı
 ```
 
-- Kamerayla birlikte **Ses** düğmesinden ya da girişteki **Sadece sesli altyazı** ile kamerasız çalışır.
+- Kamera açılınca dinleme de kendiliğinden başlar (Ayarlar'dan kapatılabilir). Altyazı yalnızca konuşma duyulunca belirir, 8 sn sessizlikte kaybolur. **Ses** düğmesi elle açıp kapatır; girişteki **Sadece sesli altyazı** kamerasız çalışır.
 - Konuşma devam ederken o ana kadar duyulan İngilizce soluk yazıyla görünür; cümle bitince Türkçesi yeşil altyazı olur. Son 3 cümle ekranda kalır.
 - Dil Ayarlar → Sesli altyazı'dan değişir (EN→TR veya TR→EN).
 - Android Chrome'da konuşma tanıma Google sunucularında yapılır, internet gerekir. Tarayıcı sessizlikte dinlemeyi kapatır; uygulama kendiliğinden yeniden başlatır.
@@ -53,7 +53,7 @@ kamera → sabitlik → sahne önbelleği → OCR → dil tespiti → çeviri (+
 |---|---|---|
 | Sabitlik | Her 150 ms'de bakış alanının 48×36 gri küçük resmi alınır, önceki kareyle karşılaştırılır. ~0,65 s fark küçük kalırsa "okuyor" sayılır. | `tick()` |
 | Sahne önbelleği | Görüntü son çevrilen sahneye benziyorsa OCR tekrar çalışmaz, eski sonuç geri gelir. Başını çevirip geri dönünce çeviri anında görünür. | `lastSceneThumb` |
-| OCR | Tesseract.js, cihaz üzerinde. Sadece ortadaki bakış alanı okunur (hız + "baktığın yer" hissi). | `captureGaze()`, `extractBlocks()` |
+| OCR | Üç karenin en neti seçilir, bakış alanı büyütülür. Tesseract için koyu zeminli ekranlar ters çevrilir ve kontrast gerilir. İstenirse Google Vision kullanılır. Emoji, ikon ve yansımadan gelen çöp kelimeler atılır. | `captureSharpest()`, `normalizeGray()`, `isRealWord()` |
 | Dil tespiti | Türkçe harfler, sık kelimeler ve ekler üzerinden kural tabanlı. | `detectLang()` |
 | Çeviri | MyMemory (anahtarsız) ya da Google Cloud (anahtarlı). Aynı metin ikinci kez çevrilmez. | `translate()` |
 | Çizim | **HUD**: Rokid gibi şeffaf gözlüklerdeki alt yazı. **Yazının üstünde**: Quest gibi kameralı gözlüklerdeki yerine yazma. | `render()` |
@@ -64,7 +64,7 @@ Ayarlanabilir eşikler dosyanın başındaki `CFG` nesnesinde.
 
 - **MyMemory kotası:** Anonim kullanımda günlük karakter kotası düşük. Ayarlara e-posta yazınca kota yükselir. Ciddi testler için Google motoru daha sağlam.
 - **Google anahtarı tarayıcıda:** Prototip için kabul edilebilir; gerçek üründe çeviri isteğini kendi sunucun üzerinden yap.
-- **OCR hızı:** Tesseract telefonda 1–3 s sürebilir. Android'de ML Kit çok daha hızlıdır (aşağıda).
+- **OCR kalitesi:** Tesseract kamera görüntüsünde orta düzeydedir, özellikle ekran ve yansımada. Ayarlardan **Google Vision** seçilince isabet belirgin artar (Cloud Vision API açık bir Google Cloud anahtarı gerekir). Android'de ML Kit hem hızlı hem isabetlidir (aşağıda).
 - **Yazının üstünde modu:** Kutular OCR anındaki konumda çizilir; telefon hareket edince silinir, durunca geri gelir. Gerçek takip (tracking) bir sonraki adım.
 
 ## Gözlüğe (Rokid) taşırken

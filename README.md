@@ -36,12 +36,24 @@ mikrofon → konuşma tanıma (Web Speech API) → bölücü → bağlamlı çev
 - Çeviri yönü sabitken OCR tek dil modeliyle çalışır (otomatikten ~2 kat hızlı). Google Vision + Google/Claude çeviri telefonda genelde en hızlı seçenektir.
 - Ayarlar → **Gecikme ölçümlerini göster**: OCR, çeviri, toplam süre ve jiroskop/gürültü değeri.
 
+## AR gözlük modu (varsayılan)
+
+Ekranda gerçek bir şeffaf AR gözlüğü taklit eder:
+- **Çeviri yazının üstüne yapışır.** Her karede görüntünün ne kadar kaydığı ölçülür (satır/sütun profilleriyle kaba tahmin + 96×72'de ince blok eşleme, kare başına ~1,5 ms). Telefonu çevirdikçe etiketler yazıyla birlikte kayar. Kod: `frameShift()`, `trackStep()`, `drawAR()`.
+- **Takip koparsa** (başka yere bakıldı), etiketler gizlenir; telefon durunca yazı yeniden okunur.
+- **Yalnızca gözlüğün görüş alanında çizer:** ortadaki çerçeve, gözlük ekranının kapladığı alanı temsil eder; dışına taşan etiket kırpılır.
+- **Bakış imleci:** ortadaki halka sabit tutunca dolar, okurken döner, çeviri gelince yeşil olur.
+- **Arayüz kaybolur:** kontroller 4 sn sonra gizlenir, ekrana dokununca geri gelir. Altyazı ekranın altında süzülür.
+- Ekranda okunabilsin diye etiketlerin altına yumuşak koyu zemin konur; gerçek şeffaf gözlük karartamaz, yalnızca ışık ekler.
+
+Gözlükte takip işini gözlüğün kendi 6DoF/SLAM takibi çok daha iyi yapar; bu prototip yalnızca 2B kaymayı izler (yaklaşma/uzaklaşma ve dönme yok).
+
+**Panel** görünümü (alt çubukta gözlük simgesi ile geçiş): çeviriler çerçevenin altındaki sabit panelde listelenir.
+
 ## Arayüz
 
-- Üstte **bakış çerçevesi**: okunan alan. Altındaki etiket durumu söyler (Hareket ediyor · Sabit tut · Okunuyor · Çevriliyor · Gösteriliyor).
-- Çerçevenin altında, onu hiç örtmeden **çeviri paneli** (gözlük ekranı taklidi).
-- En altta **sesli altyazı** ve üç düğme: Ses · Şimdi oku · Görünüm (panel / yazının üstünde).
 - Üstteki **EN → TR · Motor** etiketi ayarları açar. Ayarlar dört gruptadır: kamerayla okuma, sesli altyazı, çeviri motoru, ekran.
+- Alt çubuk: Ses · Şimdi oku · Görünüm (AR / Panel).
 - iPhone'da Safari → Paylaş → **Ana Ekrana Ekle** ile tam ekran uygulama gibi açılır (`manifest.json`, ikonlar).
 
 ## Bilinen sınırlar

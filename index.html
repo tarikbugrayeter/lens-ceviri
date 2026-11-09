@@ -342,6 +342,7 @@ body.chrome-off #bar{opacity:0;transform:translateY(12px);pointer-events:none}
       <p class="hint">AR gözlük: çeviri yazının üstüne yapışır ve telefonu çevirsen de onunla birlikte kayar; kontroller kendiliğinden gizlenir (dokununca gelir). Panel: çeviriler alttaki sabit bir panelde listelenir.</p>
     </div>
     <div class="row"><label for="dual">Orijinal metni de göster</label><input type="checkbox" class="switch" id="dual"></div>
+    <div class="row"><label for="erase">Orijinal yazıyı gizle, yalnızca çeviri görünsün</label><input type="checkbox" class="switch" id="erase"></div>
     <div class="row"><label for="showStats">Gecikme ölçümlerini göster</label><input type="checkbox" class="switch" id="showStats"></div>
   </section>
 
@@ -382,7 +383,7 @@ body.chrome-off #bar{opacity:0;transform:translateY(12px);pointer-events:none}
    ===================================================================== */
 
 /* Her yayında artır: telefonda hangi sürümün açık olduğunu görmek için */
-const APP_VERSION = "v0.8 · 09.11.2026 17:40 · AR gözlük modu + yazı takibi";
+const APP_VERSION = "v0.9 · 09.11.2026 17:55 · orijinal yazıyı silip yerine çeviri";
 
 const CFG = {
   tickMs: 90,             // hareket kontrol aralığı
@@ -414,6 +415,7 @@ const S = {
   cKey: store.get("cKey",""),
   dual: store.get("dual", false),
   stats: store.get("stats", false),
+  erase: store.get("erase", true),
   auto: store.get("auto", true),
   speech: store.get("speech", "en"),
   capMode: store.get("capMode", "sentence"),
@@ -1179,6 +1181,7 @@ function arLayout(res){
   if(!res || !source) return;
   const m = screenMap();
   for(const it of res.items){
+    it._bg = null; it._bgAt = 0;
     if(!it.out){ it._lay = null; continue; }
     const bw = it.box.w*m.scale, bh = it.box.h*m.scale;
     const maxW = Math.max(bw, 150);
@@ -1192,6 +1195,43 @@ function arLayout(res){
     const w = Math.max(...lines.map(l => octx.measureText(l).width));
     it._lay = { fs, lines, w, h: lines.length*fs*1.22 };
   }
+}
+
+/* ---------------------------------------------------------------------
+   ORİJİNAL YAZIYI SİLME
+   Yazının bulunduğu bölgenin kamera görüntüsünden küçük bir kopyası
+   alınır, pikseller parlaklığa göre sıralanır ve ortanca renk "zemin"
+   kabul edilir (yazı pikselleri azınlıktadır). Bölge bu renkle boyanır,
+   çeviri tam üstüne yazılır. Işık değiştikçe renk ~4 kez/sn yenilenir.
+   --------------------------------------------------------------------- */
+const smpC = document.createElement("canvas"); smpC.width = 40; smpC.height = 14;
+const smpX = smpC.getContext("2d", { willReadFrequently:true });
+function medianColor(d){
+  const px = [];
+  for(let i=0;i<d.length;i+=4) px.push([d[i], d[i+1], d[i+2], d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114]);
+  px.sort((a, b) => a[3] - b[3]);
+  // ortadaki %40'ın ortalaması: yazı ve parlama uçları dışarıda kalır
+  const a = Math.floor(px.length*0.3), b = Math.ceil(px.length*0.7);
+  let r = 0, g = 0, bl = 0, n = 0;
+  for(let i=a;i<b;i++){ r += px[i][0]; g += px[i][1]; bl += px[i][2]; n++; }
+  r /= n; g /= n; bl /= n;
+  return { r, g, b:bl, lum: r*0.299 + g*0.587 + bl*0.114 };
+}
+function sampleBg(it, offX, offY, now){
+  if(it._bg && now - it._bgAt < 250) return it._bg;
+  const [sw, sh] = srcSize();
+  const padX = it.box.w*0.06, padY = it.box.h*0.25;
+  const x = Math.max(0, it.box.x + offX - padX), y = Math.max(0, it.box.y + offY - padY);
+  const w = Math.min(sw - x, it.box.w + 2*padX), h = Math.min(sh - y, it.box.h + 2*padY);
+  if(w < 2 || h < 2) return it._bg || null;
+  try{
+    smpX.drawImage(source, x, y, w, h, 0, 0, smpC.width, smpC.height);
+    const c = medianColor(smpX.getImageData(0, 0, smpC.width, smpC.height).data);
+    // ani sıçramaları yumuşat
+    if(it._bg){ for(const k of ["r","g","b","lum"]) c[k] = it._bg[k]*0.5 + c[k]*0.5; }
+    it._bg = c; it._bgAt = now;
+  }catch{}
+  return it._bg || null;
 }
 
 function brackets(x, y, w, h, alpha){
@@ -1225,6 +1265,32 @@ function drawAR(now){
       continue;
     }
     const L = it._lay; if(!L) continue;
+    if(S.erase){
+      // orijinal yazıyı zemin rengiyle sil, çeviriyi tam yerine yaz
+      const bg = sampleBg(it, offX, offY, now);
+      if(bg){
+        const col = `rgb(${bg.r|0},${bg.g|0},${bg.b|0})`;
+        // OCR kutusu harflerin kenarına çok yakın olabilir: yatayda biraz daha geniş sil
+        const pad = Math.max(4, bh*0.12), padX = Math.max(8, bh*0.35);
+        const uw = Math.max(bw, L.w) + 2*padX, uh = Math.max(bh, L.h) + 2*pad;
+        octx.fillStyle = col; octx.shadowColor = col; octx.shadowBlur = pad*1.6;
+        octx.beginPath(); octx.roundRect(x - padX, y - pad, uw, uh, Math.min(10, pad*1.5)); octx.fill();
+        octx.shadowBlur = 0;
+        const ty = y + Math.max(0, (bh - L.h)/2);
+        octx.font = AR_FONT(L.fs); octx.textBaseline = "top";
+        if(bg.lum > 150){
+          // açık zemin: koyu yeşil, ince koyu kontur (açık yeşil beyazda okunmaz)
+          octx.fillStyle = "#078a3f";
+          L.lines.forEach((ln, i) => octx.fillText(ln, x, ty + i*L.fs*1.22));
+        }else{
+          octx.shadowColor = "rgba(77,255,143,0.7)"; octx.shadowBlur = 10;
+          octx.fillStyle = "#5dff9b";
+          L.lines.forEach((ln, i) => octx.fillText(ln, x, ty + i*L.fs*1.22));
+          octx.shadowBlur = 0;
+        }
+        continue;
+      }
+    }
     // okunabilirlik için yumuşak koyu zemin (gerçek şeffaf gözlükte bu olmaz; ekranda okumak için)
     octx.shadowColor = "rgba(0,0,0,0.9)"; octx.shadowBlur = 24;
     octx.fillStyle = "rgba(0,0,0,0.74)";
@@ -1477,7 +1543,7 @@ function syncUI(){
   $("cField").hidden = S.engine !== "claude";
   $("cKey").value = S.cKey; $("gKey").value = S.gKey; $("mmEmail").value = S.mmEmail;
   $("autoRead").checked = S.auto; $("autoListen").checked = S.autoListen;
-  $("dual").checked = S.dual; $("showStats").checked = S.stats;
+  $("dual").checked = S.dual; $("showStats").checked = S.stats; $("erase").checked = S.erase;
   $("micBtn").setAttribute("aria-pressed", listening);
   $("viewBtn").setAttribute("aria-pressed", S.view === "ar");
   $("viewLbl").textContent = S.view === "ar" ? "AR" : "Panel";
@@ -1499,7 +1565,7 @@ function setS(k, v){
 for(const [seg, key] of [["dirSeg","dir"],["viewSeg","view"],["ocrSeg","ocr"],["capSeg","capMode"],["speechSeg","speech"]]){
   $(seg).addEventListener("click", e => { const v = e.target.closest("button")?.dataset.v; if(v) setS(key, v); });
 }
-for(const [id, key] of [["autoRead","auto"],["autoListen","autoListen"],["dual","dual"],["showStats","stats"]]){
+for(const [id, key] of [["autoRead","auto"],["autoListen","autoListen"],["dual","dual"],["showStats","stats"],["erase","erase"]]){
   $(id).addEventListener("change", e => setS(key, e.target.checked));
 }
 $("engine").addEventListener("change", e => setS("engine", e.target.value));

@@ -44,7 +44,8 @@ Ekranda gerçek bir şeffaf AR gözlüğü taklit eder:
 - **Yalnızca gözlüğün görüş alanında çizer:** ortadaki çerçeve, gözlük ekranının kapladığı alanı temsil eder; dışına taşan etiket kırpılır.
 - **Bakış imleci:** ortadaki halka sabit tutunca dolar, okurken döner, çeviri gelince yeşil olur.
 - **Arayüz kaybolur:** kontroller 4 sn sonra gizlenir, ekrana dokununca geri gelir. Altyazı ekranın altında süzülür.
-- Ekranda okunabilsin diye etiketlerin altına yumuşak koyu zemin konur; gerçek şeffaf gözlük karartamaz, yalnızca ışık ekler.
+- **Orijinal yazı silinir, yerine yalnızca çeviri görünür** (Ayarlar → Ekran, varsayılan açık). Her yazının zemin rengi kameradan saniyede ~4 kez örneklenir (bölgedeki piksellerin parlaklık ortancası); yazı bu renkle boyanır, çeviri tam yerine yazılır. Açık zeminde yeşil koyulaşır ki okunsun. Arka planda okuma ve takip sürer. Kod: `sampleBg()`, `drawAR()`.
+- Bu ayar kapalıyken etiketler yumuşak koyu zemin üstünde gösterilir. Not: gerçek şeffaf gözlük arkadaki yazıyı silemez (yalnızca ışık ekler); silme, kameralı (video passthrough) gözlüklerde mümkündür.
 
 Gözlükte takip işini gözlüğün kendi 6DoF/SLAM takibi çok daha iyi yapar; bu prototip yalnızca 2B kaymayı izler (yaklaşma/uzaklaşma ve dönme yok).
 

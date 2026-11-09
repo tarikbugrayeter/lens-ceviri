@@ -178,6 +178,15 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
   </div>
 
   <div class="field">
+    <span class="lbl">Altyazı ne zaman çevrilsin</span>
+    <div class="seg" id="capSeg">
+      <button data-v="sentence">Cümle bitince</button>
+      <button data-v="live">Anlık</button>
+    </div>
+    <p class="hint">"Cümle bitince": konuşmacı durunca ya da cümle bitince tüm cümle bir kerede çevrilir; konuşma sürerken yalnızca duyulan İngilizce soluk görünür. "Anlık": kelimeler geldikçe çeviri akar, daha hızlı ama daha dağınık.</p>
+  </div>
+
+  <div class="field">
     <span class="lbl">Sesli altyazı</span>
     <div class="seg" id="speechSeg">
       <button data-v="en">İngilizce → Türkçe</button>
@@ -262,7 +271,7 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
    ===================================================================== */
 
 /* Her yayında artır: telefonda hangi sürümün açık olduğunu görmek için */
-const APP_VERSION = "v0.5 · 09.11.2026 16:50 · Claude çeviri + konuşma bölücü";
+const APP_VERSION = "v0.6 · 09.11.2026 16:55 · cümle cümle altyazı";
 
 const CFG = {
   tickMs: 100,            // hareket kontrol aralığı
@@ -293,6 +302,7 @@ const S = {
   stats: store.get("stats", false),
   auto: store.get("auto", true),
   speech: store.get("speech", "en"),
+  capMode: store.get("capMode", "sentence"),
   ocr: store.get("ocr", "tesseract"),
   autoListen: store.get("autoListen", true)
 };
@@ -913,7 +923,7 @@ let seg = null, pendingText = "", liveOut = "", liveCtl = null, liveReqAt = 0, l
    Tanıyıcı metni bütün olarak verdiği için kaç kelimenin çevrildiğini sayarız.
    --------------------------------------------------------------------- */
 const BREAK_WORDS = new Set("and but so because then which when while or if although however ve ama fakat çünkü sonra eğer ancak".split(" "));
-function createSegmenter({ onCommit, onPause, pauseMs = 600, maxWords = 9, holdWords = 2 }){
+function createSegmenter({ onCommit, onPause, pauseMs = 600, maxWords = 9, holdWords = 2, sentenceEnds = false }){
   let committed = 0, prev = [], timer = 0;
   const words = t => t.split(/\s+/).filter(Boolean);
   const commitTo = (all, end) => {
@@ -927,6 +937,14 @@ function createSegmenter({ onCommit, onPause, pauseMs = 600, maxWords = 9, holdW
       if(all.length < committed) committed = all.length;         // tanıyıcı metni kısalttıysa
       clearTimeout(timer);
       if(isFinal){ commitTo(all, all.length); prev = all; return ""; }
+      if(sentenceEnds){
+        // tanıyıcı nokta/soru işareti koyduysa ve sonraki cümle başladıysa: biten cümleyi gönder
+        let cut = -1;
+        for(let i = committed; i < all.length - 1; i++){
+          if(/[.?!]$/.test(all[i]) && prev[i] === all[i]) cut = i + 1;
+        }
+        if(cut > committed) commitTo(all, cut);
+      }
       if(all.length - committed >= maxWords){
         // önceki güncellemeyle aynı kalan (artık değişmeyecek) kelimeler
         let stable = committed;
@@ -1032,7 +1050,16 @@ function transcriptOf(results){
 function startListening(){
   if(!SR){ renderCaps("Bu tarayıcı konuşma tanımayı desteklemiyor. Android'de Chrome, iPhone'da Safari kullanın."); return false; }
   stopListening(true);
-  seg = createSegmenter({ onCommit: commitChunk, onPause: () => { pendingText = ""; scheduleCaps(); } });
+  // "Cümle bitince": doğal duraklamayı ya da cümle sonunu bekle, uzun konuşmada ~22 kelimede böl.
+  // "Anlık": kısa duraklamada ya da ~9 kelimede böl, bekleyen kısmı canlı çevir.
+  const sentence = S.capMode !== "live";
+  seg = createSegmenter({
+    onCommit: commitChunk,
+    onPause: () => { pendingText = ""; scheduleCaps(); },
+    pauseMs: sentence ? 850 : 600,
+    maxWords: sentence ? 22 : 9,
+    sentenceEnds: sentence
+  });
   rec = new SR();
   rec.lang = speechRoute()[2];
   rec.continuous = true;
@@ -1041,7 +1068,7 @@ function startListening(){
   rec.onresult = e => {
     const last = e.results[e.results.length - 1];
     pendingText = seg.update(transcriptOf(e.results), !!last?.isFinal);
-    if(pendingText) maybeTranslateLive(); else liveOut = "";
+    if(pendingText && S.capMode === "live") maybeTranslateLive(); else if(!pendingText) liveOut = "";
     scheduleCaps();
   };
   rec.onerror = e => {
@@ -1090,6 +1117,7 @@ function syncUI(){
   $("autoListen").checked = S.autoListen;
   $("mmEmail").value = S.mmEmail; $("gKey").value = S.gKey;
   $("dual").checked = S.dual; $("showStats").checked = S.stats;
+  for(const b of $("capSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.capMode);
   for(const b of $("speechSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.speech);
   $("micBtn").setAttribute("aria-pressed", listening);
   $("micBtn").querySelector(".rec").setAttribute("r", listening ? 3 : 0);
@@ -1101,7 +1129,7 @@ function setS(k, v){
   if(["dir","engine","ocr"].includes(k)){ lastSceneThumb = null; }       // yeniden çevir
   if(lastResult && ["view","dual","stats"].includes(k)) render(lastResult);
   if(k === "dual" && listening) renderCaps();
-  if(k === "speech" && listening) startListening();                  // yeni dille yeniden başlat
+  if((k === "speech" || k === "capMode") && listening) startListening();                  // yeni dille yeniden başlat
 }
 
 $("dirSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("dir", v); });
@@ -1114,6 +1142,7 @@ $("dual").addEventListener("change", e => setS("dual", e.target.checked));
 $("showStats").addEventListener("change", e => setS("stats", e.target.checked));
 $("ocrSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("ocr", v); });
 $("autoListen").addEventListener("change", e => setS("autoListen", e.target.checked));
+$("capSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("capMode", v); });
 $("speechSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("speech", v); });
 $("micBtn").addEventListener("click", () => { listening ? stopListening() : startListening(); });
 $("autoBtn").addEventListener("click", () => setS("auto", !S.auto));

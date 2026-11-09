@@ -16,7 +16,10 @@ mikrofon → konuşma tanıma (Web Speech API) → bölücü → bağlamlı çev
 ```
 
 - Kamera açılınca dinleme de kendiliğinden başlar (Ayarlar'dan kapatılabilir). Altyazı yalnızca konuşma duyulunca belirir, 8 sn sessizlikte kaybolur. **Ses** düğmesi elle açıp kapatır; girişteki **Sadece sesli altyazı** kamerasız çalışır.
-- **Cümle sonu beklenmez.** Tarayıcının tanıyıcısı "cümle bitti" demeyi çok geç yapar (özellikle iPhone'da). Uygulama kendi böler: ~0,6 sn duraklamada o ana kadarki parça, konuşma uzarsa ~9 kelimede (mümkünse virgül ya da and/but/so gibi bir bağlaçtan) ilk kısım hemen çevrilir. Henüz bölünmemiş kısmın canlı çevirisi de ekranda akar. Kod: `createSegmenter()`.
+- **İki altyazı modu** (Ayarlar → Altyazı ne zaman çevrilsin):
+  - **Cümle bitince** (varsayılan): Konuşmacı ~0,85 sn durunca ya da tanıyıcı cümle sonu noktalaması koyunca bütün cümle bir kerede çevrilir. Konuşma sürerken yalnızca duyulan İngilizce soluk görünür. Çok uzun konuşmada ~22 kelimede bölünür.
+  - **Anlık**: ~0,6 sn duraklamada ya da ~9 kelimede bölünür, bekleyen kısmın canlı çevirisi akar. Daha hızlı ama daha dağınık.
+  - Kod: `createSegmenter()`.
 - **Çeviri motoru:** Konuşma için **Claude** önerilir. Önceki 3 cümleyi bağlam olarak okur; noktalamasız, yarım ya da yanlış duyulmuş parçaları altyazı dilinde toparlar. Yanıt akış halinde gelir, ilk kelimeler hemen görünür. Anahtar: console.anthropic.com. **Google** hızlıdır ama her parçayı bağlamsız çevirir. **MyMemory** anahtarsızdır ama konuşmada kalitesi düşüktür.
 - Dil Ayarlar → Sesli altyazı'dan değişir (EN→TR veya TR→EN).
 - Android Chrome'da konuşma tanıma Google sunucularında yapılır, internet gerekir.

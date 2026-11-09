@@ -104,6 +104,9 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 #hud .src{font:400 12px/1.4 var(--f-mono);color:var(--hud-soft);margin-top:4px;text-shadow:none}
 #hud .empty{font:400 15px/1.45 var(--f-ui);color:var(--hud-soft)}
 #hud .empty b{color:var(--hud);font-weight:600}
+#hud .item.failed .tr{opacity:.55}
+#hud .item.failed .src{color:var(--warn)}
+.hudbtn{margin-top:10px;height:38px;padding:0 14px;border-radius:10px;border:1px solid var(--hud);background:#4dff8f1a;color:var(--hud);font:600 14px/1 var(--f-ui)}
 
 /* ---------- sesli altyazı ---------- */
 #caps{flex:none;margin-top:auto;text-align:center;padding:10px 14px;border-radius:14px;background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--hud-faint);color:var(--hud);font:700 21px/1.3 var(--f-hud);text-shadow:0 0 12px #4dff8f40;text-wrap:balance}
@@ -345,7 +348,7 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
    ===================================================================== */
 
 /* Her yayında artır: telefonda hangi sürümün açık olduğunu görmek için */
-const APP_VERSION = "v0.7 · 09.11.2026 17:20 · hızlı algılama + yeni arayüz";
+const APP_VERSION = "v0.7.1 · 09.11.2026 17:10 · dil tespiti düzeltmesi";
 
 const CFG = {
   tickMs: 90,             // hareket kontrol aralığı
@@ -785,27 +788,39 @@ async function readText(){
 /* =====================================================================
    DİL TESPİTİ (hafif, kural tabanlı)
    ===================================================================== */
-const TR_WORDS = new Set("ve bir bu için ile da de çok daha olan ne gibi ama var yok en her şu ise olarak değil sonra kadar mı mi giriş çıkış lütfen hoş geldiniz açık kapalı indirim saat".split(" "));
-const EN_WORDS = new Set("the and of to is in for with you this that on are be it your from at by or not we all open closed please welcome exit entry sale off hours now".split(" "));
+const TR_WORDS = new Set(("ve bir bu için ile da de çok daha olan ne gibi ama var yok en her şu ise olarak değil sonra kadar mı mi mu mü " +
+  "giriş çıkış lütfen hoş geldiniz açık kapalı indirim saat ana sayfa ara arama hesap ayarlar kayıt ol yap sepet fiyat ücretsiz yeni " +
+  "fazla tüm bilgi iletişim hakkında kapat geri ileri tamam evet hayır şimdi hemen burada nasıl neden kim nerede bugün yarın dün").split(" "));
+const EN_WORDS = new Set(("the and of to is in for with you this that on are be it your from at by or not we all open closed please welcome " +
+  "exit entry sale off hours now explore apps app search sign log home about contact more new free get learn read buy here menu settings " +
+  "help next back yes no ok view see show find start stop go what how why who where when today our my can will just").split(" "));
 
-function detectLang(text){
-  const t = text.toLocaleLowerCase("tr");
-  let tr = (t.match(/[çğışöü]/g) || []).length * 2;
-  let en = (t.match(/\b(th|wh|sh)\w*/g) || []).length * 0.5 + (t.match(/[qwx]/g) || []).length * 0.5;
+/* Dil tespiti: hangi dil ve ne kadar emin (margin).
+   Dikkat: Türkçe küçük harf kuralı kullanılmaz; o kuralla büyük "I" → "ı" olur ve
+   "AI", "IT", "INFORMATION" gibi İngilizce kelimeler yanlışlıkla Türkçe sayılır. */
+function detectLangScore(text){
+  // Türkçeye özgü harfler (büyük "I" iki dilde de var, sayılmaz)
+  let tr = (text.match(/[çğışöüÇĞŞÖÜİ]/g) || []).length * 2;
+  let en = 0;
+  const t = text.replace(/İ/g, "i").toLowerCase();
   for(const w of t.split(/[^\p{L}]+/u)){
+    if(!w) continue;
     if(TR_WORDS.has(w)) tr += 2;
     if(EN_WORDS.has(w)) en += 2;
+    if(/(ler|lar|nin|nın|nun|nün|dir|dır|dur|dür|miz|mız|sınız|siniz|ları|leri|lık|lik|luk|lük)$/.test(w) && w.length > 4) tr += 1;
+    if(/(ing|tion|sion|ed|ly|ness|ment|able)$/.test(w) && w.length > 4) en += 1.5;
+    if(/(th|wh|sh|ck|ph|gh|ee|oo|ou|ea|[qwx])/.test(w)) en += 0.7;
   }
-  if(/\b\w+(ler|lar|nin|nın|dir|dır|miz|mız|sınız|siniz)\b/.test(t)) tr += 1.5;
-  if(/\b\w+(ing|tion|ed|ly)\b/.test(t)) en += 1.5;
-  return tr > en ? "tr" : "en";
+  return { lang: tr > en ? "tr" : "en", margin: Math.abs(tr - en) };
 }
+function detectLang(text){ return detectLangScore(text).lang; }
 
 /* Bu blok çevrilmeli mi, hangi yönde? null = çevirme */
+/* Yön sabitken, metnin hedef dilde olduğundan EMİN değilsek çevir (yanlışlıkla atlamaktansa çevirmek iyidir) */
 function routeFor(text){
-  const lang = detectLang(text);
-  if(S.dir === "en-tr") return lang === "en" ? ["en","tr"] : null;
-  if(S.dir === "tr-en") return lang === "tr" ? ["tr","en"] : null;
+  const { lang, margin } = detectLangScore(text);
+  if(S.dir === "en-tr") return lang === "tr" && margin >= 2 ? null : ["en","tr"];
+  if(S.dir === "tr-en") return lang === "en" && margin >= 2 ? null : ["tr","en"];
   return lang === "en" ? ["en","tr"] : ["tr","en"];
 }
 
@@ -954,8 +969,9 @@ async function runPipeline(sceneThumb){
     await pool(items.filter(i => i.pending), S.engine === "mymemory" ? 3 : 6, async it => {
       try{
         const r = await translate(it.text, it.from, it.to);
+        if(!r.text || !r.text.trim()) throw new Error("Çeviri servisi boş yanıt döndü.");
         it.out = r.text; if(r.cached) res.hits++;
-      }catch(e){ firstErr = firstErr || e; }
+      }catch(e){ it.err = e.message; firstErr = firstErr || e; }
       it.pending = false;
       res.trMs = performance.now() - t1; res.totalMs = performance.now() - t0;
       if(lastResult === res) scheduleRender();
@@ -980,17 +996,21 @@ async function runPipeline(sceneThumb){
 const LNAME = { en:"İngilizce", tr:"Türkçe" };
 
 function render(res){
-  const shown = res.items.filter(i => i.out || i.pending);
+  const shown = res.items.filter(i => i.out || i.pending || i.err);
   let body;
   if(!res.items.length){
     body = `<div class="empty">Çerçevede okunabilir yazı yok. Biraz yaklaş, ışığı artır ya da yazıyı <b>çerçevenin ortasına</b> al.</div>`;
   }else if(!shown.length){
-    body = `<div class="empty">Yazı zaten ${LNAME[res.items[0].from] || "hedef dilde"}, çevrilecek bir şey yok.</div>`;
+    const src = res.items[0].from, other = src === "en" ? "en-tr" : "tr-en";
+    body = `<div class="empty">Yazı ${LNAME[src]} görünüyor ve çeviri yönü şu an <b>${S.dir === "en-tr" ? "EN → TR" : "TR → EN"}</b>.</div>
+      <button class="hudbtn" data-dir="${other}">Yönü ${other === "en-tr" ? "EN → TR" : "TR → EN"} yap</button>`;
   }else{
-    body = shown.map(i => `<div class="item${i.out ? "" : " pending"}"><div class="tr">${esc(i.out || i.text)}</div>${
-      S.dual && i.out ? `<div class="src">${esc(i.text)}</div>` : ""}</div>`).join("");
+    body = shown.map(i => i.err && !i.out
+      ? `<div class="item failed"><div class="tr">${esc(i.text)}</div><div class="src">Çevrilemedi: ${esc(i.err)}</div></div>`
+      : `<div class="item${i.out ? "" : " pending"}"><div class="tr">${esc(i.out || i.text)}</div>${
+          S.dual && i.out ? `<div class="src">${esc(i.text)}</div>` : ""}</div>`).join("");
   }
-  const first = shown[0];
+  const first = shown.find(i => i.to) || null;
   const meta = first ? `<div class="meta"><span>${first.from.toUpperCase()} → ${first.to.toUpperCase()}</span><span>${
     shown.some(i => i.pending) ? "çevriliyor" : ((res.totalMs || 0)/1000).toFixed(1) + " sn"}</span></div>` : "";
   hud.innerHTML = meta + body;
@@ -1307,6 +1327,7 @@ $("micBtn").addEventListener("click", () => {
 });
 $("viewBtn").addEventListener("click", () => setS("view", S.view === "hud" ? "inplace" : "hud"));
 $("openSheet").addEventListener("click", () => { $("sheet").hidden = false; });
+hud.addEventListener("click", e => { const d = e.target.closest(".hudbtn")?.dataset.dir; if(d){ setS("dir", d); toast("Çeviri yönü: " + (d === "en-tr" ? "EN → TR" : "TR → EN")); } });
 $("route").addEventListener("click", () => { $("sheet").hidden = false; });
 $("closeSheet").addEventListener("click", () => { $("sheet").hidden = true; });
 $("shoot").addEventListener("click", () => {

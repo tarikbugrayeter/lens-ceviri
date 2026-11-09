@@ -77,6 +77,8 @@ button,select,input{font:inherit;color:inherit}
 .pill[aria-pressed="true"] .rec{fill:var(--bad);stroke:none}
 #audioBtn{justify-content:center;border-radius:14px;height:46px}
 body.audio-only #hud,body.audio-only #shoot,body.audio-only #autoBtn,body.audio-only #viewBtn,body.audio-only #reticle{display:none}
+#hud .wait{opacity:.55}
+#caps .live{opacity:.85}
 #hud .lang{font:500 10px/1 var(--f-mono);letter-spacing:.08em;border:1px solid var(--hud-dim);border-radius:4px;padding:2px 4px;margin-right:6px;vertical-align:2px}
 
 /* alt kontrol çubuğu */
@@ -250,13 +252,14 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
    ===================================================================== */
 
 const CFG = {
-  tickMs: 150,            // hareket kontrol aralığı
-  steadyMs: 650,          // bu kadar süre sabit kalınca "okuyor" say
+  tickMs: 100,            // hareket kontrol aralığı
+  steadyMs: 350,          // bu kadar süre sabit kalınca "okuyor" say
   moveThresh: 7,          // kareler arası ort. piksel farkı (0-255) eşiği
   sceneThresh: 14,        // son çevrilen sahneden bu kadar farklıysa yeniden oku
   gaze: 0.78,             // bakış alanı: görüntünün ortadaki oranı
-  ocrW: 1400,             // OCR'a giden görüntünün hedef genişliği
-  ocrUpscale: 2,          // küçük kırpıntıyı en fazla bu kadar büyüt
+  ocrW: 1000,             // OCR'a giden görüntünün hedef genişliği (piksel sayısı OCR süresini belirler)
+  ocrUpscale: 1.3,        // küçük kırpıntıyı en fazla bu kadar büyüt
+  interimMs: 900,         // konuşma sürerken ara çeviri en sık bu aralıkla
   minWordConf: 60,        // kelime güven eşiği (altındakiler atılır)
   maxItems: 6
 };
@@ -267,7 +270,7 @@ const store = {
   set(k, v){ try{ localStorage.setItem("lens."+k, JSON.stringify(v)); }catch{} }
 };
 const S = {
-  dir: store.get("dir","auto"),
+  dir: store.get("dir","en-tr"),
   view: store.get("view","hud"),
   engine: store.get("engine","mymemory"),
   mmEmail: store.get("mmEmail",""),
@@ -413,18 +416,34 @@ function tick(){
    • Google Cloud Vision (bulut): kamera fotoğraflarında çok daha iyi.
    Gözlük/Android'de: Google ML Kit Text Recognition ile değiştirilir.
    ===================================================================== */
-let worker = null, workerReady = null;
+let worker = null, workerReady = null, workerLang = null;
+/* Yön sabitse tek dil modeli yeter (yaklaşık 2 kat hızlı); otomatikte iki model birlikte çalışır */
+function ocrLang(){ return S.dir === "en-tr" ? "eng" : S.dir === "tr-en" ? "tur" : "eng+tur"; }
+const TESS_PARAMS = { tessedit_pageseg_mode: "3", preserve_interword_spaces: "1" };
 function getWorker(onProgress){
   if(!workerReady){
-    workerReady = Tesseract.createWorker("eng+tur", 1, {
+    const lang = ocrLang();
+    workerReady = Tesseract.createWorker(lang, 1, {
       logger: m => { if(onProgress && m.status) onProgress(m); }
-    }).then(async w => {
-      // 6 = tek düzgün metin bloğu varsayma; 3 = otomatik sayfa düzeni (ekran, menü, tabela için daha uygun)
-      await w.setParameters({ tessedit_pageseg_mode: "3", preserve_interword_spaces: "1" });
-      worker = w; return w;
-    });
+    }).then(async w => { await w.setParameters(TESS_PARAMS); worker = w; workerLang = lang; return w; });
   }
   return workerReady;
+}
+async function workerFor(lang){
+  const w = await getWorker();
+  if(workerLang !== lang){
+    setStatus("busy", "OCR dili yükleniyor");
+    if(typeof w.reinitialize === "function"){
+      await w.reinitialize(lang, 1);
+      await w.setParameters(TESS_PARAMS);
+      workerLang = lang;
+    }else{                                   // eski sürümlerde: işçiyi yeniden kur
+      await w.terminate();
+      workerReady = null;
+      return getWorker();
+    }
+  }
+  return w;
 }
 
 const capC = document.createElement("canvas");
@@ -448,7 +467,7 @@ function sharpness(){
 }
 
 /* Birkaç kare arasından en netini seç (otomatik odak ve el titremesi için) */
-async function captureSharpest(count = 3, gapMs = 90){
+async function captureSharpest(count = 2, gapMs = 60){
   if(source !== video) return captureGaze();
   let best = -1;
   for(let i=0;i<count;i++){
@@ -589,7 +608,7 @@ async function ocrVision(canvas, g, s){
 async function readText(){
   const cap = await captureSharpest();
   if(S.ocr === "vision") return ocrVision(cap.canvas, cap.g, cap.s);
-  const w = await getWorker();
+  const w = await workerFor(ocrLang());
   preprocessForTesseract(cap.canvas);
   const { data } = await w.recognize(cap.canvas);
   return blocksFromTesseract(data, cap.g, cap.s);
@@ -693,20 +712,28 @@ async function runPipeline(sceneThumb){
       return;
     }
 
-    setStatus("busy","Çevriliyor");
-    let hits = 0;
-    const items = await pool(blocks, 3, async b => {
+    // OCR biter bitmez orijinal metni göster, çeviriler geldikçe tek tek yerleşsin
+    const items = blocks.map(b => {
       const route = routeFor(b.text);
-      if(!route) return { ...b, out:null, from:detectLang(b.text) };
-      const r = await translate(b.text, route[0], route[1]);
-      if(r.cached) hits++;
-      return { ...b, out:r.text, from:route[0], to:route[1] };
+      return route ? { ...b, out:null, pending:true, from:route[0], to:route[1] }
+                   : { ...b, out:null, pending:false, from:detectLang(b.text) };
     });
-    const t2 = performance.now();
-
     lastSceneThumb = sceneThumb || null;
-    lastResult = { items, ocrMs:t1-t0, trMs:t2-t1, hits };
-    render(lastResult);
+    const res = lastResult = { items, ocrMs:t1-t0, trMs:0, totalMs:t1-t0, hits:0 };
+    render(res);
+    setStatus("busy","Çevriliyor");
+
+    let firstErr = null;
+    await pool(items.filter(i => i.pending), S.engine === "google" ? 6 : 3, async it => {
+      try{
+        const r = await translate(it.text, it.from, it.to);
+        it.out = r.text; if(r.cached) res.hits++;
+      }catch(e){ firstErr = firstErr || e; }
+      it.pending = false;
+      res.trMs = performance.now() - t1; res.totalMs = performance.now() - t0;
+      if(lastResult === res) scheduleRender();
+    });
+    if(firstErr && !items.some(i => i.out)) throw firstErr;
     setStatus("shown","Gösteriliyor");
   }catch(e){
     console.error(e);
@@ -725,19 +752,27 @@ function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&l
 
 function render(res){
   // HUD her iki modda da özet olarak kalır; yerinde modda ayrıca kutular çizilir
-  const shown = res.items.filter(i => i.out);
+  const shown = res.items.filter(i => i.out || i.pending);
   if(!res.items.length){
     hud.innerHTML = `<div class="empty">Bakış alanında okunabilir yazı yok. Biraz yaklaş ya da ışığı artır.</div>`;
   }else if(!shown.length){
     hud.innerHTML = `<div class="empty">Yazı zaten hedef dilde, çevrilecek bir şey yok.</div>`;
   }else{
     hud.innerHTML = shown.map(i => `
-      <div class="item"><span class="lang">${i.from.toUpperCase()}→${i.to.toUpperCase()}</span>${esc(i.out)}
-      ${S.dual ? `<div class="src">${esc(i.text)}</div>` : ""}</div>`).join("");
+      <div class="item"><span class="lang">${i.from.toUpperCase()}→${i.to.toUpperCase()}</span>${
+        i.out ? esc(i.out) : `<span class="wait">${esc(i.text)} …</span>`}
+      ${S.dual && i.out ? `<div class="src">${esc(i.text)}</div>` : ""}</div>`).join("");
   }
   hud.hidden = S.view === "inplace" && shown.length > 0;
-  if(S.view === "inplace") drawInPlace(shown); else clearOverlay();
+  if(S.view === "inplace") drawInPlace(shown.filter(i => i.out)); else clearOverlay();
   updateStats(res);
+}
+
+let renderQueued = false;
+function scheduleRender(){
+  if(renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; if(lastResult) render(lastResult); });
 }
 
 function sizeOverlay(){
@@ -785,7 +820,7 @@ function updateStats(res){
   statsEl.hidden = !S.stats;
   if(!S.stats) return;
   const n = res.items.filter(i => i.out).length;
-  statsEl.innerHTML = `OCR ${(res.ocrMs/1000).toFixed(2)} s<br>Çeviri ${(res.trMs/1000).toFixed(2)} s<br>${n} blok · ${res.hits} önbellek`;
+  statsEl.innerHTML = `OCR ${(res.ocrMs/1000).toFixed(2)} s · ${S.ocr === "vision" ? "Vision" : ocrLang()}<br>Çeviri ${(res.trMs/1000).toFixed(2)} s<br>Toplam ${((res.totalMs ?? res.ocrMs + res.trMs)/1000).toFixed(2)} s<br>${n} blok · ${res.hits} önbellek`;
 }
 
 /* =====================================================================
@@ -795,6 +830,20 @@ function updateStats(res){
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const caps = $("caps");
 let rec = null, listening = false, capLines = [], interimText = "", lastFinal = "", restartTimer = 0;
+let interimOut = "", interimReqAt = 0, interimReqText = "", interimSeq = 0;
+
+/* Konuşma sürerken birikmiş metni belirli aralıklarla çevir; cümle bitince kesin çeviri yerini alır */
+function maybeTranslateInterim(t){
+  if(!t || t.split(/\s+/).length < 3 || t === interimReqText) return;
+  const gap = S.engine === "google" ? CFG.interimMs * 0.6 : CFG.interimMs * 1.4;   // ücretsiz motorda kotayı koru
+  const now = performance.now();
+  if(now - interimReqAt < gap) return;
+  interimReqAt = now; interimReqText = t;
+  const seq = ++interimSeq, [from, to] = speechRoute();
+  translate(t, from, to).then(r => {
+    if(seq === interimSeq && interimText){ interimOut = r.text; renderCaps(); }
+  }).catch(() => {});
+}
 
 function speechRoute(){ return S.speech === "tr" ? ["tr","en","tr-TR"] : ["en","tr","en-US"]; }
 
@@ -815,7 +864,9 @@ function renderCaps(note){
     const src = S.dual && c.out ? `<div class="src">${esc(c.src)}</div>` : "";
     return `<div class="cap${old}">${main}${src}</div>`;
   }).join("");
-  const interim = interimText ? `<div class="interim">${esc(interimText)}…</div>` : "";
+  const interim = !interimText ? ""
+    : interimOut ? `<div class="cap live">${esc(interimOut)}…</div>${S.dual ? `<div class="interim">${esc(interimText)}</div>` : ""}`
+    : `<div class="interim">${esc(interimText)}…</div>`;
   caps.innerHTML = hasContent ? rows + interim : `<div class="note">Dinliyorum…</div>`;
   if(hasContent && !audioOnly){
     clearTimeout(capIdleTimer);
@@ -824,6 +875,7 @@ function renderCaps(note){
 }
 
 function addCaption(text){
+  interimSeq++; interimOut = ""; interimReqText = "";                // ara çeviriyi iptal et
   if(!text || text === lastFinal) return;           // bazı Android sürümleri aynı sonucu iki kez verir
   lastFinal = text;
   const [from, to] = speechRoute();
@@ -853,6 +905,8 @@ function startListening(){
       if(r.isFinal) addCaption(t); else interim += t + " ";
     }
     interimText = interim.trim();
+    if(!interimText){ interimOut = ""; interimSeq++; }
+    else maybeTranslateInterim(interimText);
     renderCaps();
   };
   rec.onerror = e => {

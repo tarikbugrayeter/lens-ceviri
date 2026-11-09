@@ -60,6 +60,15 @@ kamera → sabitlik → sahne önbelleği → OCR → dil tespiti → çeviri (+
 
 Ayarlanabilir eşikler dosyanın başındaki `CFG` nesnesinde.
 
+## Hız
+
+Telefon durduktan sonra yaklaşık 0,35 sn içinde okuma başlar. Yazı okunur okunmaz orijinal metin soluk görünür, her paragrafın çevirisi geldikçe yerine geçer. Konuşmada cümle bitmesi beklenmez; konuşma sürerken ara çeviri gösterilir, cümle bitince kesin çeviri yerleşir.
+
+Gecikmenin büyük kısmı cihazdaki OCR'dan gelir. Hızlandırmak için:
+- Çeviri yönünü sabitle (EN→TR gibi): OCR tek dil modeliyle çalışır, otomatik moddan yaklaşık iki kat hızlıdır.
+- Google Vision + Google çeviri: telefonda genelde en hızlı ve en isabetli seçenek.
+- Ayarlar → **Gecikme ölçümlerini göster** ile her adımın süresini görebilirsin.
+
 ## Bilinen sınırlar
 
 - **MyMemory kotası:** Anonim kullanımda günlük karakter kotası düşük. Ayarlara e-posta yazınca kota yükselir. Ciddi testler için Google motoru daha sağlam.

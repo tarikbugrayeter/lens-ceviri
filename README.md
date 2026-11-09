@@ -26,14 +26,23 @@ mikrofon → konuşma tanıma (Web Speech API) → bölücü → bağlamlı çev
 - **Netflix gibi videolar:** Video TV'de ya da bilgisayarda oynarken telefonu yakına koy. Video aynı telefonda oynuyorsa telefonun yankı engelleme özelliği hoparlör sesini bastırabilir.
 - Gözlükte bu kısım gözlüğün mikrofon dizisi + konuşma tanıma servisiyle değişir; bölücü, çeviri ve altyazı mantığı aynı kalır.
 
-## Hız
+## Hız ve hareket algılama
 
-Telefon durduktan sonra yaklaşık 0,35 sn içinde okuma başlar. Yazı okunur okunmaz orijinal metin soluk görünür, her paragrafın çevirisi geldikçe yerine geçer. Konuşmada cümle bitmesi beklenmez; konuşma sürerken ara çeviri gösterilir, cümle bitince kesin çeviri yerleşir.
+- **Jiroskop önce:** Telefonun dönüş hızı (°/sn) ölçülür. El titremesi (~5–15°/sn) "sabit", bakış çevirme (>28°/sn) "hareket" sayılır. Ekran titremesi ve otomatik pozlama bunu etkilemez. iPhone ilk açılışta hareket sensörü izni sorar. Gözlükte aynı rolü gözlüğün IMU'su görür.
+- **Jiroskop yoksa görüntü farkı:** Parlaklık ortalaması çıkarılır (pozlama telafisi), eşik kameranın kendi gürültüsüne göre uyarlanır.
+- Telefon **0,25 sn** sabit kalınca okuma başlar; bakış çerçevesinin altındaki çubuk dolarak bunu gösterir.
+- İlk okuma bulanık kareye denk gelip yazı bulamazsa aynı sahnede **1,8 sn'de bir** yeniden denenir (önceden telefon oynatılana kadar beklenirdi).
+- Okunan metin hemen soluk görünür, çeviriler geldikçe yerine geçer.
+- Çeviri yönü sabitken OCR tek dil modeliyle çalışır (otomatikten ~2 kat hızlı). Google Vision + Google/Claude çeviri telefonda genelde en hızlı seçenektir.
+- Ayarlar → **Gecikme ölçümlerini göster**: OCR, çeviri, toplam süre ve jiroskop/gürültü değeri.
 
-Gecikmenin büyük kısmı cihazdaki OCR'dan gelir. Hızlandırmak için:
-- Çeviri yönünü sabitle (EN→TR gibi): OCR tek dil modeliyle çalışır, otomatik moddan yaklaşık iki kat hızlıdır.
-- Google Vision + Google çeviri: telefonda genelde en hızlı ve en isabetli seçenek.
-- Ayarlar → **Gecikme ölçümlerini göster** ile her adımın süresini görebilirsin.
+## Arayüz
+
+- Üstte **bakış çerçevesi**: okunan alan. Altındaki etiket durumu söyler (Hareket ediyor · Sabit tut · Okunuyor · Çevriliyor · Gösteriliyor).
+- Çerçevenin altında, onu hiç örtmeden **çeviri paneli** (gözlük ekranı taklidi).
+- En altta **sesli altyazı** ve üç düğme: Ses · Şimdi oku · Görünüm (panel / yazının üstünde).
+- Üstteki **EN → TR · Motor** etiketi ayarları açar. Ayarlar dört gruptadır: kamerayla okuma, sesli altyazı, çeviri motoru, ekran.
+- iPhone'da Safari → Paylaş → **Ana Ekrana Ekle** ile tam ekran uygulama gibi açılır (`manifest.json`, ikonlar).
 
 ## Bilinen sınırlar
 

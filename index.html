@@ -4,121 +4,181 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#050807">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lens">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Lens Çeviri</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Düzen: tam ekran kamera sahnesi; altta gözlük ekranını taklit eden yeşil HUD; üstte ince durum şeridi. Tek (koyu) tema bilinçli: kamera uygulaması. */
+/* Düzen: üstte ince şerit; ekranın üst yarısında "bakış çerçevesi" (okunan alan);
+   çerçevenin altında, onu hiç örtmeden gözlük ekranı gibi yeşil çeviri paneli;
+   en altta sesli altyazı ve üç düğmeli kontrol çubuğu.
+   Tek (koyu) tema bilinçli: kamera üstünde çalışan bir HUD. */
 :root{
-  --ink:#050807;          /* sahne zemini */
-  --panel:#0c1210ee;      /* kontrol yüzeyi */
-  --line:#24312b;         /* ince ayraçlar */
-  --text:#dfe8e3;         /* arayüz metni */
-  --dim:#8a9a92;          /* ikincil metin */
+  --ink:#050807;          /* zemin */
+  --glass:#010302eb;      /* HUD camı */
+  --panel:#0b110eF2;      /* ayarlar yüzeyi */
+  --line:#22302a;         /* ayraçlar */
+  --text:#e3ebe6;         /* arayüz metni */
+  --dim:#8d9c95;          /* ikincil metin */
   --hud:#4dff8f;          /* Rokid tarzı tek renk yeşil */
-  --hud-dim:#4dff8f88;
-  --warn:#ffcc4d;
+  --hud-soft:#4dff8f99;
+  --hud-faint:#4dff8f2e;
+  --warn:#ffd25c;
   --bad:#ff6b6b;
   --f-hud:"Atkinson Hyperlegible",system-ui,sans-serif;
   --f-ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --top-h:56px;
+  --bar-h:92px;
+  --safe-t:env(safe-area-inset-top,0px);
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --gut-l:max(16px,env(safe-area-inset-left,0px));
+  --gut-r:max(16px,env(safe-area-inset-right,0px));
   color-scheme:dark;
 }
 *{box-sizing:border-box}
-html,body{height:100%;margin:0;background:var(--ink);color:var(--text);font:15px/1.45 var(--f-ui);overflow:hidden;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--ink);color:var(--text);font:15px/1.45 var(--f-ui);overflow:hidden;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
 button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
 [hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--hud);outline-offset:2px}
+svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
+/* ---------- sahne ---------- */
 #stage{position:fixed;inset:0;overflow:hidden;background:#000}
 #video,#still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-#still{object-fit:contain;background:#000}
+#still{object-fit:contain}
 #overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 
-/* bakış alanı: gözlükte "nereye bakıyorsan" bölgesi */
-#reticle{position:absolute;pointer-events:none;border:1px solid #ffffff40;border-radius:14px;transition:border-color .25s}
-#reticle::before,#reticle::after{content:"";position:absolute;width:22px;height:22px;border:2px solid var(--hud)}
-#reticle::before{left:-2px;top:-2px;border-right:0;border-bottom:0;border-top-left-radius:14px}
-#reticle::after{right:-2px;bottom:-2px;border-left:0;border-top:0;border-bottom-right-radius:14px}
-#reticle.steady{border-color:var(--hud-dim)}
+/* ---------- bakış çerçevesi ---------- */
+#reticle{position:absolute;left:var(--gut-l);right:var(--gut-r);top:calc(var(--safe-t) + var(--top-h) + 8px);height:clamp(150px,30vh,300px);border-radius:18px;pointer-events:none;
+  box-shadow:0 0 0 200vmax #00000038;--rc:#ffffffc0;transition:box-shadow .3s}
+#reticle .c{position:absolute;width:28px;height:28px;border:3px solid var(--rc);transition:border-color .2s}
+#reticle .tl{left:0;top:0;border-right:0;border-bottom:0;border-top-left-radius:18px}
+#reticle .tr{right:0;top:0;border-left:0;border-bottom:0;border-top-right-radius:18px}
+#reticle .bl{left:0;bottom:0;border-right:0;border-top:0;border-bottom-left-radius:18px}
+#reticle .br{right:0;bottom:0;border-left:0;border-top:0;border-bottom-right-radius:18px}
+#reticle .prog{position:absolute;left:22px;right:22px;bottom:12px;height:3px;border-radius:2px;background:#ffffff1f;overflow:hidden;opacity:0;transition:opacity .2s}
+#reticle .prog b{display:block;height:100%;width:0;background:var(--hud);border-radius:2px}
+#phase{position:absolute;left:50%;bottom:-14px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:99px;background:#000000d9;border:1px solid #ffffff1f;
+  font:500 11px/1 var(--f-mono);letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;color:var(--text)}
+#phase::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dim)}
+#reticle[data-phase="moving"]{--rc:#ffffff5c}
+#reticle[data-phase="moving"] #phase::before{background:var(--warn)}
+#reticle[data-phase="steady"],#reticle[data-phase="reading"],#reticle[data-phase="translating"],#reticle[data-phase="done"]{--rc:var(--hud)}
+#reticle[data-phase="steady"] .prog,#reticle[data-phase="reading"] .prog,#reticle[data-phase="translating"] .prog{opacity:1}
+#reticle[data-phase="reading"] .prog b{width:40%!important;transition:none!important;animation:scan 1s ease-in-out infinite alternate}
+#reticle[data-phase="translating"] .prog b{width:100%!important;transition:none!important;animation:breathe .9s ease-in-out infinite alternate}
+#reticle[data-phase="steady"] #phase::before,#reticle[data-phase="reading"] #phase::before,#reticle[data-phase="translating"] #phase::before{background:var(--hud);animation:blink .8s infinite}
+#reticle[data-phase="done"] #phase::before{background:var(--hud)}
+#reticle[data-phase="error"]{--rc:var(--bad)}
+#reticle[data-phase="error"] #phase::before{background:var(--bad)}
+@keyframes scan{from{transform:translateX(-10%)}to{transform:translateX(160%)}}
+@keyframes breathe{from{opacity:.45}to{opacity:1}}
+@keyframes blink{50%{opacity:.25}}
 
-/* üst durum şeridi */
-#top{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 10px) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));display:flex;gap:10px;align-items:center;background:linear-gradient(#000a,#0000)}
-#status{display:flex;align-items:center;gap:8px;font:500 12px/1 var(--f-mono);letter-spacing:.04em;text-transform:uppercase;color:var(--text);min-width:0;flex:1}
-#status .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
-#status[data-s="steady"] .dot,#status[data-s="shown"] .dot{background:var(--hud)}
-#status[data-s="moving"] .dot{background:var(--warn)}
-#status[data-s="busy"] .dot{background:var(--hud);animation:pulse .8s infinite}
-#status[data-s="error"] .dot{background:var(--bad)}
-#statusText{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@keyframes pulse{50%{opacity:.25}}
-.icon-btn{flex:none;width:40px;height:40px;border-radius:12px;border:1px solid #ffffff22;background:#0008;display:grid;place-items:center;cursor:pointer}
-.icon-btn:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--hud);outline-offset:2px}
-.icon-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
+/* ---------- üst şerit ---------- */
+#top{position:fixed;left:0;right:0;top:0;height:calc(var(--safe-t) + var(--top-h));padding:var(--safe-t) var(--gut-r) 0 var(--gut-l);display:flex;align-items:center;gap:10px;background:linear-gradient(#000000b3,#0000)}
+#brand{display:flex;align-items:center;gap:8px;font:700 15px/1 var(--f-hud);letter-spacing:.02em}
+#brand svg{width:22px;height:22px;stroke:var(--hud);fill:none;stroke-width:2.2;stroke-linecap:round}
+#route{margin-left:auto;height:34px;padding:0 12px;border-radius:99px;border:1px solid #ffffff26;background:#00000080;display:flex;align-items:center;gap:6px;font:500 12px/1 var(--f-mono);letter-spacing:.06em;color:var(--text)}
+#route .eng{color:var(--dim)}
+#openSheet{width:38px;height:38px;border-radius:12px;border:1px solid #ffffff26;background:#00000080;display:grid;place-items:center}
 
-/* HUD: Rokid ekranının taklidi (tek renk yeşil, 30° alan ≈ ortada küçük pencere) */
-#dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 88px);width:min(92vw,520px);display:flex;flex-direction:column;gap:8px;pointer-events:none}
-#dock>*{pointer-events:auto}
-#hud{max-height:34vh;overflow:auto;padding:14px 16px;border-radius:12px;background:#000000c4;border:1px solid #4dff8f33;font:400 19px/1.35 var(--f-hud);color:var(--hud);text-shadow:0 0 10px #4dff8f55;transition:opacity .3s}
-#hud.stale{opacity:.45}
-#hud .item+.item{margin-top:10px;padding-top:10px;border-top:1px dashed #4dff8f33}
-#hud .src{font:400 12px/1.35 var(--f-mono);color:var(--hud-dim);margin-top:3px;text-shadow:none}
-#hud .empty{font-size:15px;color:var(--hud-dim)}
-/* sesli altyazı: konuşma → metin → çeviri */
-#caps{padding:10px 14px;border-radius:12px;background:#000000d0;border:1px solid #4dff8f33;text-align:center;font:700 20px/1.3 var(--f-hud);color:var(--hud);text-shadow:0 0 10px #4dff8f55}
-#caps .cap{transition:opacity .3s}
-#caps .cap.old{opacity:.5;font-size:16px}
+/* ---------- çeviri paneli (gözlük HUD'u) ---------- */
+#dock{position:fixed;left:var(--gut-l);right:var(--gut-r);top:var(--dock-top,50vh);bottom:calc(var(--safe-b) + var(--bar-h) + 6px);display:flex;flex-direction:column;gap:10px;pointer-events:none;align-items:center}
+#dock>*{pointer-events:auto;width:100%;max-width:560px}
+#hud{flex:0 1 auto;min-height:0;overflow:auto;padding:12px 16px 14px;border-radius:14px;background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--hud-faint);color:var(--hud);transition:opacity .25s;-webkit-user-select:text;user-select:text}
+#hud.stale{opacity:.4}
+#hud .meta{display:flex;justify-content:space-between;gap:10px;font:500 10px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--hud-soft);margin-bottom:10px}
+#hud .item{font:400 20px/1.32 var(--f-hud);text-shadow:0 0 12px #4dff8f40;text-wrap:pretty}
+#hud .item+.item{margin-top:12px}
+#hud .item.pending .tr{opacity:.45}
+#hud .item.pending .tr::after{content:" …"}
+#hud .src{font:400 12px/1.4 var(--f-mono);color:var(--hud-soft);margin-top:4px;text-shadow:none}
+#hud .empty{font:400 15px/1.45 var(--f-ui);color:var(--hud-soft)}
+#hud .empty b{color:var(--hud);font-weight:600}
+
+/* ---------- sesli altyazı ---------- */
+#caps{flex:none;margin-top:auto;text-align:center;padding:10px 14px;border-radius:14px;background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--hud-faint);color:var(--hud);font:700 21px/1.3 var(--f-hud);text-shadow:0 0 12px #4dff8f40;text-wrap:balance}
 #caps .cap+.cap{margin-top:6px}
-#caps .src{font:400 12px/1.35 var(--f-mono);color:var(--hud-dim);text-shadow:none;margin-top:2px}
-#caps .interim{font:400 14px/1.35 var(--f-mono);color:var(--hud-dim);font-style:italic;text-shadow:none;margin-top:6px}
+#caps .cap.old{opacity:.45;font-size:16px;font-weight:400}
+#caps .cap.live{opacity:.85}
 #caps .wait{opacity:.6}
-#caps .note{font:400 14px/1.4 var(--f-ui);color:var(--hud-dim);text-shadow:none}
-.pill svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8}
-.pill[aria-pressed="true"] .rec{fill:var(--bad);stroke:none}
-#audioBtn{justify-content:center;border-radius:14px;height:46px}
-body.audio-only #hud,body.audio-only #shoot,body.audio-only #autoBtn,body.audio-only #viewBtn,body.audio-only #reticle{display:none}
-#hud .wait{opacity:.55}
-#caps .live{opacity:.85}
-#hud .lang{font:500 10px/1 var(--f-mono);letter-spacing:.08em;border:1px solid var(--hud-dim);border-radius:4px;padding:2px 4px;margin-right:6px;vertical-align:2px}
+#caps .src{font:400 12px/1.4 var(--f-mono);color:var(--hud-soft);text-shadow:none;margin-top:2px}
+#caps .interim{font:400 13px/1.4 var(--f-mono);color:var(--hud-soft);font-style:italic;text-shadow:none;margin-top:6px}
+#caps .note{font:400 14px/1.4 var(--f-ui);color:var(--hud-soft);text-shadow:none}
+#caps .who{display:inline-block;font:500 10px/1 var(--f-mono);letter-spacing:.1em;color:var(--hud-soft);border:1px solid var(--hud-faint);border-radius:4px;padding:3px 5px;margin-bottom:6px}
 
-/* alt kontrol çubuğu */
-#bar{position:fixed;left:0;right:0;bottom:0;padding:12px max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 14px) max(16px,env(safe-area-inset-left,0px));display:flex;gap:10px;align-items:center;justify-content:center;background:linear-gradient(#0000,#000c)}
-.pill{height:44px;padding:0 16px;border-radius:22px;border:1px solid #ffffff26;background:#0009;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
-.pill[aria-pressed="true"]{border-color:var(--hud);color:var(--hud)}
-#shoot{width:60px;height:60px;border-radius:50%;border:3px solid var(--text);background:#ffffff14;cursor:pointer;flex:none}
-#shoot:active{transform:scale(.94)}
-#stats{position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 60px);font:400 11px/1.5 var(--f-mono);color:var(--dim);text-align:right;background:#0007;padding:6px 8px;border-radius:8px;font-variant-numeric:tabular-nums}
+/* ---------- alt çubuk ---------- */
+#bar{position:fixed;left:0;right:0;bottom:0;height:calc(var(--safe-b) + var(--bar-h));padding:0 var(--gut-r) var(--safe-b) var(--gut-l);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;background:linear-gradient(#0000,#000000d9 45%)}
+.ctl{justify-self:center;display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;padding:4px;min-width:72px;color:var(--text)}
+.ctl .ic{position:relative;width:50px;height:50px;border-radius:50%;display:grid;place-items:center;background:#ffffff14;border:1px solid #ffffff2b;transition:background .2s,border-color .2s,color .2s}
+.ctl .cl{font:500 11px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.ctl[aria-pressed="true"] .ic{background:#4dff8f1f;border-color:var(--hud);color:var(--hud)}
+.ctl[aria-pressed="true"] .cl{color:var(--hud)}
+#micBtn[aria-pressed="true"] .ic::after{content:"";position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--bad);animation:blink 1.2s infinite}
+#shoot{width:72px;height:72px;border-radius:50%;border:3px solid #ffffffe6;background:none;padding:5px;display:grid;place-items:center}
+#shoot span{width:100%;height:100%;border-radius:50%;background:#ffffffe6;display:grid;place-items:center;color:#06100b;transition:transform .12s}
+#shoot:active span{transform:scale(.9)}
+#shoot svg.i{width:26px;height:26px;stroke-width:2.2}
+body.audio-only #reticle,body.audio-only #hud,body.audio-only #shoot,body.audio-only #viewBtn{display:none!important}
+body.audio-only #dock{top:calc(var(--safe-t) + var(--top-h) + 20px)}
+body.audio-only #caps{margin-top:auto;font-size:24px}
 
-/* ayarlar paneli */
-#sheet{position:fixed;inset:auto 0 0 0;max-height:86vh;overflow:auto;background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);border-radius:18px 18px 0 0;padding:18px max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 20px) max(16px,env(safe-area-inset-left,0px));z-index:20}
-#sheet h2{margin:0 0 4px;font:700 18px/1.2 var(--f-hud);text-wrap:balance}
-#sheet .sub{color:var(--dim);font-size:13px;margin:0 0 14px}
-.field{display:grid;gap:6px;margin-bottom:14px}
-.field>label,.field>.lbl{font:500 11px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
-.seg{display:flex;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.seg button{flex:1;min-width:0;padding:10px 6px;background:transparent;border:0;cursor:pointer;font-size:14px}
+/* ---------- ölçümler, bildirim ---------- */
+#stats{position:fixed;right:var(--gut-r);top:calc(var(--safe-t) + var(--top-h) + 12px);font:400 11px/1.5 var(--f-mono);color:var(--text);text-align:right;background:#000000b3;padding:6px 9px;border-radius:8px;font-variant-numeric:tabular-nums;z-index:5}
+#toast{position:fixed;left:50%;top:calc(var(--safe-t) + var(--top-h) + 10px);transform:translate(-50%,-8px);max-width:min(92vw,480px);padding:10px 14px;border-radius:12px;background:#111a15f2;border:1px solid var(--line);font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:25}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+#toast.bad{border-color:#ff6b6b66}
+
+/* ---------- ayarlar ---------- */
+#sheet{position:fixed;inset:auto 0 0 0;max-height:88vh;overflow:auto;background:var(--panel);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);border-radius:20px 20px 0 0;padding:0 var(--gut-r) calc(var(--safe-b) + 18px) var(--gut-l);z-index:20;-webkit-user-select:auto;user-select:auto}
+#sheet header{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;padding:16px 0 12px;background:linear-gradient(var(--panel) 80%,#0b110e00);z-index:1}
+#sheet h2{margin:0;font:700 19px/1.2 var(--f-hud)}
+#closeSheet{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#ffffff0d;display:grid;place-items:center}
+.grp{border-top:1px solid var(--line);padding:14px 0 6px}
+.grp h3{margin:0 0 12px;font:500 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--hud-soft)}
+.field{display:grid;gap:7px;margin-bottom:14px}
+.field>.lbl,.field>label{font-size:14px;color:var(--text)}
+.seg{display:flex;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#00000040}
+.seg button{flex:1;min-width:0;padding:10px 6px;background:transparent;border:0;font-size:14px;color:var(--dim)}
 .seg button+button{border-left:1px solid var(--line)}
-.seg button[aria-pressed="true"]{background:#4dff8f1f;color:var(--hud)}
-select,input[type=text],input[type=password],input[type=email]{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:#000a}
-.hint{font-size:12px;color:var(--dim);margin:0}
-.row{display:flex;gap:10px;align-items:center;justify-content:space-between}
-.switch{appearance:none;width:46px;height:28px;border-radius:14px;background:#2a3530;position:relative;cursor:pointer;flex:none;margin:0}
+.seg button[aria-pressed="true"]{background:#4dff8f1c;color:var(--hud);font-weight:600}
+select,input[type=text],input[type=password],input[type=email]{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:#000000a0}
+.hint{font-size:12.5px;line-height:1.45;color:var(--dim);margin:0}
+.row{display:flex;gap:12px;align-items:center;justify-content:space-between;min-height:40px}
+.row label{font-size:14px}
+.grp .row{margin-bottom:10px}
+.switch{appearance:none;-webkit-appearance:none;width:48px;height:28px;border-radius:14px;background:#2a3530;position:relative;flex:none;margin:0;cursor:pointer}
 .switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--text);transition:transform .2s}
-.switch:checked{background:#2c8f55}
-.switch:checked::after{transform:translateX(18px)}
-#closeSheet{width:100%;margin-top:6px;height:46px;border-radius:12px;border:0;background:var(--hud);color:#03130a;font-weight:700;cursor:pointer}
+.switch:checked{background:#24894f}
+.switch:checked::after{transform:translateX(20px)}
+.ver{font:500 11px/1.4 var(--f-mono);letter-spacing:.05em;color:var(--dim);text-align:center;margin-top:14px}
 
-/* başlangıç ekranı */
-#intro{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:radial-gradient(120% 80% at 50% 0%,#0f2219,var(--ink));padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
-#intro .box{max-width:420px;display:grid;gap:16px}
-#intro h1{margin:0;font:700 34px/1.05 var(--f-hud);color:var(--hud);text-shadow:0 0 18px #4dff8f44;text-wrap:balance}
-#intro p{margin:0;color:var(--text)}
-#intro ol{margin:0;padding-left:20px;color:var(--dim);font-size:14px;display:grid;gap:4px}
-#start{height:52px;border-radius:14px;border:0;background:var(--hud);color:#03130a;font-weight:700;font-size:16px;cursor:pointer}
-#photoBtn{height:46px;border-radius:14px;border:1px solid var(--line);background:transparent;cursor:pointer}
+/* ---------- giriş ---------- */
+#intro{position:fixed;inset:0;z-index:30;overflow:auto;background:radial-gradient(130% 70% at 50% -10%,#123322 0%,var(--ink) 62%);padding:calc(var(--safe-t) + 28px) var(--gut-r) calc(var(--safe-b) + 24px) var(--gut-l);display:grid;place-items:center}
+#intro .box{width:100%;max-width:420px;display:grid;gap:18px}
+#intro .mark{width:64px;height:64px;stroke:var(--hud);fill:none;stroke-width:2.4;stroke-linecap:round;filter:drop-shadow(0 0 12px #4dff8f55)}
+#intro h1{margin:0;font:700 38px/1.02 var(--f-hud);letter-spacing:-.01em;text-wrap:balance}
+#intro h1 em{font-style:normal;color:var(--hud)}
+#intro .lead{margin:0;color:var(--text);font-size:16px;line-height:1.5}
+#intro .feat{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+#intro .feat li{display:flex;gap:12px;align-items:flex-start;color:var(--dim);font-size:14px;line-height:1.45}
+#intro .feat svg{flex:none;width:20px;height:20px;stroke:var(--hud);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
+#intro .feat b{color:var(--text);font-weight:600}
+#start{height:56px;border-radius:16px;border:0;background:var(--hud);color:#04140b;font:700 17px/1 var(--f-ui);box-shadow:0 8px 30px #4dff8f33}
+#intro .alt{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#intro .alt button{height:46px;border-radius:14px;border:1px solid var(--line);background:#ffffff08;font-size:14px}
+#a2hs{font-size:13px;color:var(--dim);background:#ffffff08;border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin:0}
+#load{font:400 12px/1.4 var(--f-mono);color:var(--dim);min-height:17px}
 #introErr{color:var(--bad);font-size:14px}
-.ver{font:500 11px/1 var(--f-mono);letter-spacing:.06em;color:var(--dim);text-align:center;margin-top:10px}
-#load{font:400 12px var(--f-mono);color:var(--dim)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -127,131 +187,145 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
 <div id="stage" aria-label="Kamera görüntüsü">
   <video id="video" playsinline muted autoplay></video>
   <img id="still" alt="Seçilen fotoğraf" hidden>
-  <div id="reticle"></div>
   <canvas id="overlay"></canvas>
+  <div id="reticle" data-phase="idle">
+    <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+    <div class="prog"><b></b></div>
+    <div id="phase">Hazırlanıyor</div>
+  </div>
 </div>
 
-<div id="top">
-  <div id="status" data-s="idle"><span class="dot"></span><span id="statusText">Hazırlanıyor</span></div>
-  <button class="icon-btn" id="openSheet" aria-label="Ayarlar">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
-  </button>
-</div>
+<header id="top">
+  <div id="brand"><svg viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M8 10h8M8 14h5"/></svg>Lens</div>
+  <button id="route" aria-label="Çeviri yönü ve motoru, ayarları açar"><span id="routeDir">EN → TR</span><span class="eng" id="routeEng">· MyMemory</span></button>
+  <button id="openSheet" aria-label="Ayarlar"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
+</header>
 
 <div id="stats" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <div id="dock">
-  <div id="hud" role="status" aria-live="polite"><div class="empty">Telefonu bir yazıya tut ve sabit bekle.</div></div>
+  <div id="hud" aria-live="polite"><div class="empty">Yazıyı <b>çerçevenin içine</b> al ve telefonu bir an sabit tut.</div></div>
   <div id="caps" aria-live="polite" hidden></div>
 </div>
 
-<div id="bar">
-  <button class="pill" id="autoBtn" aria-pressed="true">Otomatik</button>
-  <button id="shoot" aria-label="Şimdi çevir"></button>
-  <button class="pill" id="viewBtn">HUD</button>
-  <button class="pill" id="micBtn" aria-pressed="false" aria-label="Sesli altyazı">
-    <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><circle class="rec" cx="19" cy="5" r="0"/></svg>Ses
+<nav id="bar">
+  <button class="ctl" id="micBtn" aria-pressed="false" aria-label="Sesli altyazı">
+    <span class="ic"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+    <span class="cl">Ses</span>
   </button>
-</div>
+  <button id="shoot" aria-label="Şimdi oku"><span><svg class="i" viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M8 10h8M8 14h6"/></svg></span></button>
+  <button class="ctl" id="viewBtn" aria-pressed="false" aria-label="Görünümü değiştir">
+    <span class="ic"><svg class="i" viewBox="0 0 24 24" id="viewIcon"><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 16.5h7"/></svg></span>
+    <span class="cl" id="viewLbl">Panel</span>
+  </button>
+</nav>
 
 <div id="sheet" hidden role="dialog" aria-labelledby="sheetTitle">
-  <h2 id="sheetTitle">Ayarlar</h2>
-  <p class="sub">Değişiklikler hemen uygulanır ve bu cihazda saklanır.</p>
+  <header>
+    <h2 id="sheetTitle">Ayarlar</h2>
+    <button id="closeSheet" aria-label="Kapat"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </header>
 
-  <div class="field">
-    <span class="lbl">Çeviri yönü</span>
-    <div class="seg" id="dirSeg">
-      <button data-v="auto">Otomatik</button>
-      <button data-v="en-tr">EN → TR</button>
-      <button data-v="tr-en">TR → EN</button>
+  <section class="grp">
+    <h3>Kamerayla okuma</h3>
+    <div class="row"><label for="autoRead">Telefon durunca kendiliğinden oku</label><input type="checkbox" class="switch" id="autoRead"></div>
+    <div class="field">
+      <span class="lbl">Çeviri yönü</span>
+      <div class="seg" id="dirSeg">
+        <button data-v="en-tr">EN → TR</button>
+        <button data-v="tr-en">TR → EN</button>
+        <button data-v="auto">Otomatik</button>
+      </div>
+      <p class="hint">Yön sabitken okuma yaklaşık iki kat hızlıdır. Otomatikte her paragrafın dili ayrı tespit edilir.</p>
     </div>
-    <p class="hint">Otomatikte her paragrafın dili ayrı tespit edilir ve öbür dile çevrilir.</p>
-  </div>
-
-  <div class="field">
-    <span class="lbl">Görünüm</span>
-    <div class="seg" id="viewSeg">
-      <button data-v="hud">Gözlük HUD</button>
-      <button data-v="inplace">Yazının üstünde</button>
+    <div class="field">
+      <span class="lbl">Yazı tanıma</span>
+      <div class="seg" id="ocrSeg">
+        <button data-v="tesseract">Cihazda</button>
+        <button data-v="vision">Google Vision</button>
+      </div>
+      <p class="hint">Cihazdaki motor ücretsiz ve internetsizdir. Google Vision kamera görüntüsünde çok daha isabetli ve hızlıdır, Google Cloud anahtarı ister.</p>
     </div>
-    <p class="hint">HUD, Rokid gibi şeffaf gözlüklerdeki alt yazıyı taklit eder. "Yazının üstünde", Quest gibi kameralı gözlüklerdeki yerine yazmayı taklit eder.</p>
-  </div>
+  </section>
 
-  <div class="field">
-    <span class="lbl">Altyazı ne zaman çevrilsin</span>
-    <div class="seg" id="capSeg">
-      <button data-v="sentence">Cümle bitince</button>
-      <button data-v="live">Anlık</button>
-    </div>
-    <p class="hint">"Cümle bitince": konuşmacı durunca ya da cümle bitince tüm cümle bir kerede çevrilir; konuşma sürerken yalnızca duyulan İngilizce soluk görünür. "Anlık": kelimeler geldikçe çeviri akar, daha hızlı ama daha dağınık.</p>
-  </div>
-
-  <div class="field">
-    <span class="lbl">Sesli altyazı</span>
-    <div class="seg" id="speechSeg">
-      <button data-v="en">İngilizce → Türkçe</button>
-      <button data-v="tr">Türkçe → İngilizce</button>
-    </div>
-    <p class="hint">Duyulan konuşma yazıya çevrilir, sonra çevirisi altyazı olarak gösterilir. Video başka bir cihazda (TV, bilgisayar) oynarken en iyi sonucu verir; aynı telefonda oynayan ses, telefonun yankı engelleme özelliği yüzünden zayıf duyulabilir.</p>
-  </div>
-
-  <div class="field">
-    <span class="lbl">Yazı tanıma (OCR)</span>
-    <div class="seg" id="ocrSeg">
-      <button data-v="tesseract">Cihazda (ücretsiz)</button>
-      <button data-v="vision">Google Vision</button>
-    </div>
-    <p class="hint">Google Vision kamera görüntüsünde çok daha isabetli okur ama API anahtarı ister. Cihazdaki motor internetsiz çalışır.</p>
-  </div>
-
-  <div class="field">
-    <label for="engine">Çeviri motoru</label>
-    <select id="engine">
-      <option value="claude">Claude (en doğal, bağlamı anlar)</option>
-      <option value="google">Google Cloud Translation (hızlı)</option>
-      <option value="mymemory">MyMemory (ücretsiz, düşük kalite)</option>
-    </select>
-    <p class="hint">Konuşma çevirisi için Claude önerilir: önceki cümleleri okuyarak yarım cümleleri ve yanlış duyulan kelimeleri toparlar. MyMemory anahtarsız ama özellikle konuşmada sık sık saçma çeviriler üretir.</p>
-  </div>
-  <div class="field" id="cField" hidden>
-    <label for="cKey">Claude API anahtarı</label>
-    <input type="password" id="cKey" placeholder="sk-ant-…" autocomplete="off">
-    <p class="hint">console.anthropic.com adresinden alınır. Anahtar yalnızca bu tarayıcıda saklanır; gerçek üründe isteği kendi sunucunuz üzerinden yapın.</p>
-  </div>
-  <div class="field" id="mmField">
-    <label for="mmEmail">E-posta (isteğe bağlı)</label>
-    <input type="email" id="mmEmail" placeholder="ornek@alanadi.com" autocomplete="off">
-    <p class="hint">MyMemory anonim kullanımda günlük kotayı düşük tutar; e-posta verilirse kota yükselir.</p>
-  </div>
-  <div class="field" id="gField" hidden>
-    <label for="gKey">Google Cloud API anahtarı</label>
-    <input type="password" id="gKey" placeholder="AIza…" autocomplete="off">
-    <p class="hint">Projede kullandığın API'ler açık olmalı: çeviri için Cloud Translation API, okuma için Cloud Vision API. Anahtar yalnızca bu tarayıcıda saklanır. Üretimde anahtarı tarayıcıya koymayın, kendi sunucunuz üzerinden çağırın.</p>
-  </div>
-
-  <div class="field">
+  <section class="grp">
+    <h3>Sesli altyazı</h3>
     <div class="row"><label for="autoListen">Kamera açılınca sesi de dinle</label><input type="checkbox" class="switch" id="autoListen"></div>
+    <div class="field">
+      <span class="lbl">Konuşma dili</span>
+      <div class="seg" id="speechSeg">
+        <button data-v="en">İngilizce → Türkçe</button>
+        <button data-v="tr">Türkçe → İngilizce</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="lbl">Ne zaman çevrilsin</span>
+      <div class="seg" id="capSeg">
+        <button data-v="sentence">Cümle bitince</button>
+        <button data-v="live">Anlık</button>
+      </div>
+      <p class="hint">Video başka bir cihazda (TV, bilgisayar) oynarken en iyi sonucu verir. Aynı telefonda oynayan ses, yankı engelleme yüzünden zayıf duyulabilir.</p>
+    </div>
+  </section>
+
+  <section class="grp">
+    <h3>Çeviri motoru</h3>
+    <div class="field">
+      <select id="engine" aria-label="Çeviri motoru">
+        <option value="claude">Claude — en doğal, bağlamı anlar</option>
+        <option value="google">Google Cloud — hızlı</option>
+        <option value="mymemory">MyMemory — ücretsiz, düşük kalite</option>
+      </select>
+    </div>
+    <div class="field" id="cField" hidden>
+      <label for="cKey">Claude API anahtarı</label>
+      <input type="password" id="cKey" placeholder="sk-ant-…" autocomplete="off">
+      <p class="hint">console.anthropic.com adresinden alınır. Yalnızca bu tarayıcıda saklanır.</p>
+    </div>
+    <div class="field" id="gField" hidden>
+      <label for="gKey">Google Cloud API anahtarı</label>
+      <input type="password" id="gKey" placeholder="AIza…" autocomplete="off">
+      <p class="hint">Projede Cloud Translation API (çeviri) ve Cloud Vision API (okuma) açık olmalı. Yalnızca bu tarayıcıda saklanır.</p>
+    </div>
+    <div class="field" id="mmField">
+      <label for="mmEmail">E-posta (isteğe bağlı, kotayı artırır)</label>
+      <input type="email" id="mmEmail" placeholder="ornek@alanadi.com" autocomplete="off">
+    </div>
+  </section>
+
+  <section class="grp">
+    <h3>Ekran</h3>
+    <div class="field">
+      <span class="lbl">Çeviri nerede görünsün</span>
+      <div class="seg" id="viewSeg">
+        <button data-v="hud">Panelde</button>
+        <button data-v="inplace">Yazının üstünde</button>
+      </div>
+      <p class="hint">Panel, Rokid gibi şeffaf gözlüklerdeki alt yazıyı taklit eder. "Yazının üstünde", kameralı gözlüklerdeki yerine yazmayı taklit eder.</p>
+    </div>
     <div class="row"><label for="dual">Orijinal metni de göster</label><input type="checkbox" class="switch" id="dual"></div>
     <div class="row"><label for="showStats">Gecikme ölçümlerini göster</label><input type="checkbox" class="switch" id="showStats"></div>
-  </div>
+  </section>
 
-  <button id="closeSheet">Tamam</button>
   <div class="ver" id="verSheet"></div>
 </div>
 
 <div id="intro">
   <div class="box">
-    <h1>Lens Çeviri</h1>
-    <p>Gözlüğün yapacağı işin telefondaki provası: kamerayı yazıya tut, telefonu sabit tut, çeviri kendiliğinden belirsin.</p>
-    <ol>
-      <li>Kamera görüntüsü sürekli izlenir.</li>
-      <li>Görüntü durunca bakış alanındaki yazı okunur.</li>
-      <li>Metin çevrilip gözlük ekranı gibi gösterilir.</li>
-      <li>Ses düğmesi açıksa duyulan konuşma da altyazıya çevrilir.</li>
-    </ol>
-    <button id="start">Kamerayı aç</button>
-    <button id="photoBtn">Fotoğrafla dene</button>
-    <button id="audioBtn" class="pill">Sadece sesli altyazı (kamerasız)</button>
+    <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 22V14a6 6 0 0 1 6-6h8M42 8h8a6 6 0 0 1 6 6v8M56 42v8a6 6 0 0 1-6 6h-8M22 56h-8a6 6 0 0 1-6-6v-8M20 27h24M20 37h16"/></svg>
+    <h1>Gördüğün ve duyduğun her şey, <em>Türkçe.</em></h1>
+    <p class="lead">Gözlükte çalışacak çevirinin telefondaki provası. Kamerayı yazıya tut, konuşmaları dinle; çeviri kendiliğinden belirsin.</p>
+    <ul class="feat">
+      <li><svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M8 10h8M8 14h6"/></svg><span><b>Yazı:</b> Çerçeveye giren tabela, ekran ya da menü, telefon durduğu an okunur.</span></li>
+      <li><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span><b>Ses:</b> Duyulan konuşma cümle cümle altyazıya dönüşür.</span></li>
+    </ul>
+    <button id="start">Başla</button>
+    <div class="alt">
+      <button id="photoBtn">Fotoğrafla dene</button>
+      <button id="audioBtn">Sadece ses</button>
+    </div>
+    <p id="a2hs" hidden>Tam ekran için: Safari'de <b>Paylaş → Ana Ekrana Ekle</b>. Ana ekrandan açınca mikrofon çalışmazsa Safari'den aç.</p>
     <input type="file" id="file" accept="image/*" capture="environment" hidden>
     <div id="load"></div>
     <div id="introErr" role="alert"></div>
@@ -264,21 +338,24 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
 "use strict";
 /* =====================================================================
    LENS ÇEVİRİ — boru hattı
-   kaynak (kamera) → sabitlik → sahne önbelleği → OCR → dil tespiti
-   → çeviri (+önbellek) → çizim (HUD veya yerinde)
-   Gözlüğe taşırken değişecek kısımlar yalnızca "KAYNAK" ve "ÇİZİM"
+   kaynak (kamera) → hareket/sabitlik → sahne önbelleği → OCR → dil tespiti
+   → çeviri (+önbellek) → çizim (panel veya yerinde)
+   Gözlüğe taşırken değişecek kısımlar "KAYNAK", "HAREKET" ve "ÇİZİM"
    bölümleridir; ortadaki mantık aynen kalır.
    ===================================================================== */
 
 /* Her yayında artır: telefonda hangi sürümün açık olduğunu görmek için */
-const APP_VERSION = "v0.6 · 09.11.2026 16:55 · cümle cümle altyazı";
+const APP_VERSION = "v0.7 · 09.11.2026 17:20 · hızlı algılama + yeni arayüz";
 
 const CFG = {
-  tickMs: 100,            // hareket kontrol aralığı
-  steadyMs: 350,          // bu kadar süre sabit kalınca "okuyor" say
-  moveThresh: 7,          // kareler arası ort. piksel farkı (0-255) eşiği
-  sceneThresh: 14,        // son çevrilen sahneden bu kadar farklıysa yeniden oku
-  gaze: 0.78,             // bakış alanı: görüntünün ortadaki oranı
+  tickMs: 90,             // hareket kontrol aralığı
+  steadyMs: 250,          // bu kadar süre sabit kalınca oku
+  gyroMove: 28,           // jiroskop: bu hızın (°/sn) üstü "hareket"
+  gyroSceneJump: 20,      // jiroskop varken bile bu kadar büyük görüntü farkı = sahne değişti
+  moveMin: 5,             // görüntü farkı eşiğinin alt sınırı (jiroskop yokken)
+  noiseMul: 3,            // eşik = gürültü tabanı × bu katsayı
+  sceneMin: 7,            // son okunan sahneden en az bu kadar farklıysa yeniden oku
+  retryEmptyMs: 1800,     // yazı bulunamadıysa aynı sahnede bu aralıkla tekrar dene (odak oturunca)
   ocrW: 1000,             // OCR'a giden görüntünün hedef genişliği (piksel sayısı OCR süresini belirler)
   ocrUpscale: 1.3,        // küçük kırpıntıyı en fazla bu kadar büyüt
   interimMs: 900,         // konuşma sürerken ara çeviri en sık bu aralıkla
@@ -298,7 +375,7 @@ const S = {
   mmEmail: store.get("mmEmail",""),
   gKey: store.get("gKey",""),
   cKey: store.get("cKey",""),
-  dual: store.get("dual", true),
+  dual: store.get("dual", false),
   stats: store.get("stats", false),
   auto: store.get("auto", true),
   speech: store.get("speech", "en"),
@@ -309,11 +386,41 @@ const S = {
 
 /* ---------- DOM ---------- */
 const $ = id => document.getElementById(id);
-const video=$("video"), still=$("still"), overlay=$("overlay"), reticle=$("reticle");
-const hud=$("hud"), statusEl=$("status"), statusText=$("statusText"), statsEl=$("stats");
+const stage=$("stage"), video=$("video"), still=$("still"), overlay=$("overlay"), reticle=$("reticle");
+const hud=$("hud"), statsEl=$("stats"), phaseEl=$("phase"), progB=reticle.querySelector(".prog b");
 const octx = overlay.getContext("2d");
 
-function setStatus(s, text){ statusEl.dataset.s = s; statusText.textContent = text; }
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ---------- durum göstergesi: bakış çerçevesinin altındaki etiket + ilerleme çubuğu ---------- */
+let phase = "idle";
+function setPhase(p, label){
+  if(label) phaseEl.textContent = label;
+  if(p === phase) return;
+  phase = p;
+  reticle.dataset.phase = p;
+  if(p === "steady"){
+    // sabit kalınca dolan çubuk: "birazdan okuyacağım"
+    progB.style.transition = "none"; progB.style.width = "0";
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      progB.style.transition = `width ${CFG.steadyMs}ms linear`; progB.style.width = "100%";
+    }));
+  }else if(p === "moving" || p === "idle" || p === "done" || p === "error"){
+    progB.style.transition = "none"; progB.style.width = "0";
+  }
+}
+/* eski çağrılar için (OCR ve ses bölümleri kullanır) */
+function setStatus(s, text){
+  const map = { idle:"idle", moving:"moving", steady:"idle", busy:"reading", shown:"done", error:"error" };
+  setPhase(map[s] || s, text);
+}
+
+let toastTimer = 0;
+function toast(msg, bad){
+  const t = $("toast");
+  t.textContent = msg; t.classList.toggle("bad", !!bad); t.classList.add("on");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), bad ? 4500 : 2200);
+}
 
 /* =====================================================================
    KAYNAK — Rokid'de burası gözlük kamerasından kare alan koda dönüşür
@@ -327,11 +434,11 @@ async function startCamera(){
   }
   const stream = await navigator.mediaDevices.getUserMedia({
     audio:false,
-    video:{ facingMode:{ideal:"environment"}, width:{ideal:1920}, height:{ideal:1080} }
+    video:{ facingMode:{ideal:"environment"}, width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30} }
   });
   video.srcObject = stream;
   await video.play();
-  // otomatik odak açıkken yakın yazılar daha net olur (desteklenmiyorsa sessizce geç)
+  // sürekli otomatik odak (desteklenmiyorsa sessizce geç)
   try{
     const track = stream.getVideoTracks()[0];
     const caps = track.getCapabilities?.() || {};
@@ -339,56 +446,83 @@ async function startCamera(){
   }catch{}
   source = video; fitMode = "cover";
   still.hidden = true; video.hidden = false;
+  layout();
 }
 
 function srcSize(){
   return source === video ? [video.videoWidth, video.videoHeight] : [still.naturalWidth, still.naturalHeight];
 }
 
-/* Kaynağın ekranda nasıl yerleştiği (object-fit) → kaynak koordinatını ekran koordinatına çevir */
+/* Kaynağın ekranda nasıl yerleştiği (object-fit) → kaynak ↔ ekran koordinatı */
 function screenMap(){
   const [sw, sh] = srcSize();
-  const cw = overlay.clientWidth, ch = overlay.clientHeight;
+  const cw = stage.clientWidth, ch = stage.clientHeight;
   const scale = fitMode === "cover" ? Math.max(cw/sw, ch/sh) : Math.min(cw/sw, ch/sh);
   return { scale, ox:(cw - sw*scale)/2, oy:(ch - sh*scale)/2, cw, ch };
 }
 
-/* Bakış alanı: kaynak koordinatlarında, ekranda görünen bölgenin ortası */
-function gazeRect(){
-  const [sw, sh] = srcSize();
-  if(source === still) return { x:0, y:0, w:sw, h:sh };   // fotoğrafta tüm kare okunur
-  const m = screenMap();
-  // ekranda görünen kaynak bölgesi
-  const vx0 = Math.max(0, -m.ox/m.scale), vy0 = Math.max(0, -m.oy/m.scale);
-  const vw = Math.min(sw, m.cw/m.scale), vh = Math.min(sh, m.ch/m.scale);
-  // HUD'un altta kapladığı alanı hariç tutmak için dikeyde biraz yukarı kaydır
-  const w = vw*CFG.gaze, h = vh*CFG.gaze*0.72;
-  return { x: vx0 + (vw-w)/2, y: vy0 + (vh-h)*0.38, w, h };
-}
-
-function placeReticle(){
+/* Bakış alanı = ekrandaki çerçevenin kapladığı yer, kaynak koordinatlarında.
+   Düzen değişince (döndürme, kamera açılınca) bir kez hesaplanır. */
+let gazeCache = null;
+function layout(){
+  const r = reticle.getBoundingClientRect(), st = stage.getBoundingClientRect();
+  document.documentElement.style.setProperty("--dock-top", (r.bottom + 26) + "px");
+  gazeCache = null;
   if(!source) return;
-  const g = gazeRect(), m = screenMap();
-  Object.assign(reticle.style, {
-    left:(g.x*m.scale+m.ox)+"px", top:(g.y*m.scale+m.oy)+"px",
-    width:(g.w*m.scale)+"px", height:(g.h*m.scale)+"px"
-  });
+  const [sw, sh] = srcSize();
+  if(!sw || !sh) return;
+  if(source === still){ gazeCache = { x:0, y:0, w:sw, h:sh }; return; }
+  const m = screenMap();
+  let x = (r.left - st.left - m.ox)/m.scale, y = (r.top - st.top - m.oy)/m.scale;
+  let w = r.width/m.scale, h = r.height/m.scale;
+  x = Math.max(0, x); y = Math.max(0, y); w = Math.min(sw - x, w); h = Math.min(sh - y, h);
+  gazeCache = { x, y, w, h };
 }
+function gazeRect(){ if(!gazeCache) layout(); return gazeCache || { x:0, y:0, w:1, h:1 }; }
+function placeReticle(){ layout(); }
 
 /* =====================================================================
-   SABİTLİK + SAHNE ÖNBELLEĞİ
-   Küçük gri tonlu küçük resimle kareler karşılaştırılır.
-   Gözlükte bunun yerine IMU (baş hareketi) verisi de kullanılabilir.
+   HAREKET + SAHNE ÖNBELLEĞİ
+   1) Jiroskop (telefon/gözlük dönüş hızı) varsa asıl ölçü odur: ekran
+      titremesinden ve pozlama değişiminden etkilenmez.
+   2) Yoksa görüntü farkı: parlaklık ortalaması çıkarılarak (otomatik pozlama
+      telafisi) ve kameranın kendi gürültüsüne göre uyarlanan eşikle.
+   Gözlükte: gözlüğün IMU'su (baş hareketi) birebir aynı rolü görür.
    ===================================================================== */
-const TW = 48, TH = 36;
+const motion = { rot:0, last:0, on:false };
+function onDeviceMotion(e){
+  const r = e.rotationRate;
+  if(!r || r.alpha === null) return;
+  const mag = Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0);   // °/sn
+  if(!isFinite(mag)) return;
+  motion.rot = motion.rot*0.55 + mag*0.45;
+  motion.last = performance.now(); motion.on = true;
+}
+/* iPhone izin ister; bu fonksiyon mutlaka bir dokunuşun içinde çağrılmalı */
+function enableMotion(){
+  try{
+    const D = window.DeviceMotionEvent;
+    if(!D) return;
+    const add = () => window.addEventListener("devicemotion", onDeviceMotion);
+    if(typeof D.requestPermission === "function") D.requestPermission().then(p => { if(p === "granted") add(); }).catch(() => {});
+    else add();
+  }catch{}
+}
+const gyroLive = () => motion.on && performance.now() - motion.last < 600;
+
+const TW = 32, TH = 24;
 const thumbC = document.createElement("canvas"); thumbC.width = TW; thumbC.height = TH;
 const thumbX = thumbC.getContext("2d", { willReadFrequently:true });
 
+/* Bakış alanının küçük, ortalaması sıfırlanmış gri tonlu kopyası */
 function thumb(){
   const g = gazeRect();
   thumbX.drawImage(source, g.x, g.y, g.w, g.h, 0, 0, TW, TH);
-  const d = thumbX.getImageData(0,0,TW,TH).data, out = new Uint8Array(TW*TH);
-  for(let i=0,j=0;i<d.length;i+=4,j++) out[j] = (d[i]*77 + d[i+1]*150 + d[i+2]*29) >> 8;
+  const d = thumbX.getImageData(0,0,TW,TH).data, out = new Float32Array(TW*TH);
+  let sum = 0;
+  for(let i=0,j=0;i<d.length;i+=4,j++){ out[j] = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114; sum += out[j]; }
+  const mean = sum / out.length;
+  for(let j=0;j<out.length;j++) out[j] -= mean;
   return out;
 }
 function diff(a, b){
@@ -397,41 +531,50 @@ function diff(a, b){
   return s / a.length;
 }
 
-let prevThumb = null, steadySince = 0, lastSceneThumb = null, busy = false, lastResult = null;
+let prevThumb = null, noise = 2, steadySince = 0, lastSceneThumb = null, lastReadAt = 0, busy = false, lastResult = null;
+
+/* Saf karar fonksiyonu (test edilebilir): bu kare hareketli mi? */
+function isMoving(d, noiseFloor, gyro){
+  if(gyro !== null) return gyro > CFG.gyroMove || d > Math.max(CFG.gyroSceneJump, noiseFloor*6);
+  return d > Math.max(CFG.moveMin, noiseFloor*CFG.noiseMul);
+}
 
 function tick(){
-  if(!source || source !== video || video.readyState < 2) return;
+  if(!source || source !== video || video.readyState < 2 || !gazeCache) return;
   const t = thumb();
-  const motion = diff(t, prevThumb);
+  const d = diff(t, prevThumb);
   prevThumb = t;
+  // gürültü tabanı: sakin karelerdeki farkın yavaş ortalaması
+  // (sürekli yüksekse yavaşça yükselir: titreyen ekran gibi durumlara uyum sağlar)
+  noise = Math.min(12, noise*0.95 + Math.min(d, noise*2)*0.05);
+  const moving = isMoving(d, noise, gyroLive() ? motion.rot : null);
   const now = performance.now();
 
-  if(motion > CFG.moveThresh){
+  if(moving){
     steadySince = 0;
-    reticle.classList.remove("steady");
     if(lastResult){
       hud.classList.add("stale");
       if(S.view === "inplace") clearOverlay();   // yerinde çizimler artık yanlış konumda
     }
-    if(!busy) setStatus("moving","Hareket");
+    if(!busy) setPhase("moving", "Hareket ediyor");
     return;
   }
-  if(!steadySince) steadySince = now;
-  reticle.classList.add("steady");
-  if(now - steadySince < CFG.steadyMs || busy) return;
+  if(busy) return;
+  if(!steadySince){ steadySince = now; }
 
-  // aynı sahne mi? → OCR'ı tekrar çalıştırma, sonucu geri getir
-  if(lastSceneThumb && diff(t, lastSceneThumb) < CFG.sceneThresh){
-    if(lastResult && hud.classList.contains("stale")){
-      hud.classList.remove("stale");
-      render(lastResult);
-      setStatus("shown","Gösteriliyor (önbellek)");
-    }
+  const sameScene = lastSceneThumb && diff(t, lastSceneThumb) < Math.max(CFG.sceneMin, noise*4);
+  const emptyLast = lastResult && lastResult.items.length === 0;
+  if(sameScene && !(emptyLast && now - lastReadAt > CFG.retryEmptyMs)){
+    // aynı sahne: tekrar okuma, sonucu geri getir
+    if(lastResult && hud.classList.contains("stale")){ hud.classList.remove("stale"); render(lastResult); }
+    if(phase !== "done" && phase !== "error") setPhase("done", lastResult?.items.length ? "Gösteriliyor" : "Yazı aranıyor");
     return;
   }
-  if(S.auto) runPipeline(t);
-  else setStatus("steady","Sabit, çevirmek için dokun");
+  if(!S.auto){ setPhase("idle", "Okumak için dokun"); return; }
+  if(now - steadySince < CFG.steadyMs){ setPhase("steady", "Sabit tut"); return; }
+  runPipeline(t);
 }
+
 
 /* =====================================================================
    OCR — iki motor:
@@ -638,6 +781,7 @@ async function readText(){
   return blocksFromTesseract(data, cap.g, cap.s);
 }
 
+
 /* =====================================================================
    DİL TESPİTİ (hafif, kural tabanlı)
    ===================================================================== */
@@ -664,6 +808,7 @@ function routeFor(text){
   if(S.dir === "tr-en") return lang === "tr" ? ["tr","en"] : null;
   return lang === "en" ? ["en","tr"] : ["tr","en"];
 }
+
 
 /* =====================================================================
    ÇEVİRİ — değiştirilebilir motor + metin önbelleği
@@ -772,6 +917,7 @@ async function pool(items, n, fn){
   return res;
 }
 
+
 /* =====================================================================
    BORU HATTI
    ===================================================================== */
@@ -779,17 +925,18 @@ async function runPipeline(sceneThumb){
   if(busy || !source) return;
   busy = true;
   hud.classList.remove("stale");
-  setStatus("busy","Okunuyor");
+  setPhase("reading", "Okunuyor");
   const t0 = performance.now();
   try{
     const blocks = await readText();
     const t1 = performance.now();
+    lastReadAt = performance.now();
+    lastSceneThumb = sceneThumb || null;
 
     if(!blocks.length){
-      lastSceneThumb = sceneThumb || null;
-      lastResult = { items:[], ocrMs:t1-t0, trMs:0, hits:0 };
+      lastResult = { items:[], ocrMs:t1-t0, trMs:0, totalMs:t1-t0, hits:0 };
       render(lastResult);
-      setStatus("steady","Yazı bulunamadı");
+      setPhase("done", "Yazı aranıyor");
       return;
     }
 
@@ -799,13 +946,12 @@ async function runPipeline(sceneThumb){
       return route ? { ...b, out:null, pending:true, from:route[0], to:route[1] }
                    : { ...b, out:null, pending:false, from:detectLang(b.text) };
     });
-    lastSceneThumb = sceneThumb || null;
     const res = lastResult = { items, ocrMs:t1-t0, trMs:0, totalMs:t1-t0, hits:0 };
     render(res);
-    setStatus("busy","Çevriliyor");
+    setPhase("translating", "Çevriliyor");
 
     let firstErr = null;
-    await pool(items.filter(i => i.pending), S.engine === "google" ? 6 : 3, async it => {
+    await pool(items.filter(i => i.pending), S.engine === "mymemory" ? 3 : 6, async it => {
       try{
         const r = await translate(it.text, it.from, it.to);
         it.out = r.text; if(r.cached) res.hits++;
@@ -815,12 +961,14 @@ async function runPipeline(sceneThumb){
       if(lastResult === res) scheduleRender();
     });
     if(firstErr && !items.some(i => i.out)) throw firstErr;
-    setStatus("shown","Gösteriliyor");
+    if(firstErr) toast(firstErr.message, true);
+    setPhase("done", "Gösteriliyor");
   }catch(e){
     console.error(e);
-    setStatus("error", e.message || "Hata");
+    setPhase("error", "Hata");
     hud.innerHTML = `<div class="empty">${esc(e.message || "Bir hata oluştu")}</div>`;
     lastSceneThumb = null;
+    lastReadAt = performance.now();
   }finally{
     busy = false;
   }
@@ -829,21 +977,24 @@ async function runPipeline(sceneThumb){
 /* =====================================================================
    ÇİZİM — Rokid'de burası gözlük ekranına metin basan koda dönüşür
    ===================================================================== */
-function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+const LNAME = { en:"İngilizce", tr:"Türkçe" };
 
 function render(res){
-  // HUD her iki modda da özet olarak kalır; yerinde modda ayrıca kutular çizilir
   const shown = res.items.filter(i => i.out || i.pending);
+  let body;
   if(!res.items.length){
-    hud.innerHTML = `<div class="empty">Bakış alanında okunabilir yazı yok. Biraz yaklaş ya da ışığı artır.</div>`;
+    body = `<div class="empty">Çerçevede okunabilir yazı yok. Biraz yaklaş, ışığı artır ya da yazıyı <b>çerçevenin ortasına</b> al.</div>`;
   }else if(!shown.length){
-    hud.innerHTML = `<div class="empty">Yazı zaten hedef dilde, çevrilecek bir şey yok.</div>`;
+    body = `<div class="empty">Yazı zaten ${LNAME[res.items[0].from] || "hedef dilde"}, çevrilecek bir şey yok.</div>`;
   }else{
-    hud.innerHTML = shown.map(i => `
-      <div class="item"><span class="lang">${i.from.toUpperCase()}→${i.to.toUpperCase()}</span>${
-        i.out ? esc(i.out) : `<span class="wait">${esc(i.text)} …</span>`}
-      ${S.dual && i.out ? `<div class="src">${esc(i.text)}</div>` : ""}</div>`).join("");
+    body = shown.map(i => `<div class="item${i.out ? "" : " pending"}"><div class="tr">${esc(i.out || i.text)}</div>${
+      S.dual && i.out ? `<div class="src">${esc(i.text)}</div>` : ""}</div>`).join("");
   }
+  const first = shown[0];
+  const meta = first ? `<div class="meta"><span>${first.from.toUpperCase()} → ${first.to.toUpperCase()}</span><span>${
+    shown.some(i => i.pending) ? "çevriliyor" : ((res.totalMs || 0)/1000).toFixed(1) + " sn"}</span></div>` : "";
+  hud.innerHTML = meta + body;
+  hud.scrollTop = 0;
   hud.hidden = S.view === "inplace" && shown.length > 0;
   if(S.view === "inplace") drawInPlace(shown.filter(i => i.out)); else clearOverlay();
   updateStats(res);
@@ -880,7 +1031,6 @@ function drawInPlace(items){
   for(const it of items){
     const x = it.box.x*m.scale + m.ox, y = it.box.y*m.scale + m.oy;
     const w = Math.max(it.box.w*m.scale, 80), h = it.box.h*m.scale;
-    // metni kutuya sığdıracak yazı boyutunu bul
     let fs = Math.min(28, Math.max(12, h*0.8)), lines;
     for(;;){
       octx.font = `700 ${fs}px "Atkinson Hyperlegible", system-ui, sans-serif`;
@@ -889,9 +1039,9 @@ function drawInPlace(items){
       fs -= 1;
     }
     const bh = Math.max(h, lines.length*fs*1.2 + 8);
-    octx.fillStyle = "rgba(5,10,8,0.86)";
+    octx.fillStyle = "rgba(2,6,4,0.88)";
     octx.beginPath(); octx.roundRect(x-4, y-4, w+8, bh+8, 8); octx.fill();
-    octx.strokeStyle = "rgba(77,255,143,0.55)"; octx.lineWidth = 1; octx.stroke();
+    octx.strokeStyle = "rgba(77,255,143,0.5)"; octx.lineWidth = 1; octx.stroke();
     octx.fillStyle = "#4dff8f"; octx.textBaseline = "top";
     lines.forEach((ln, i) => octx.fillText(ln, x+2, y + 2 + i*fs*1.2));
   }
@@ -901,8 +1051,9 @@ function updateStats(res){
   statsEl.hidden = !S.stats;
   if(!S.stats) return;
   const n = res.items.filter(i => i.out).length;
-  statsEl.innerHTML = `OCR ${(res.ocrMs/1000).toFixed(2)} s · ${S.ocr === "vision" ? "Vision" : ocrLang()}<br>Çeviri ${(res.trMs/1000).toFixed(2)} s<br>Toplam ${((res.totalMs ?? res.ocrMs + res.trMs)/1000).toFixed(2)} s<br>${n} blok · ${res.hits} önbellek`;
+  statsEl.innerHTML = `OCR ${(res.ocrMs/1000).toFixed(2)} s · ${S.ocr === "vision" ? "Vision" : ocrLang()}<br>Çeviri ${(res.trMs/1000).toFixed(2)} s<br>Toplam ${((res.totalMs || 0)/1000).toFixed(2)} s<br>${n} blok · ${res.hits} önbellek<br>${gyroLive() ? "jiroskop " + motion.rot.toFixed(0) + "°/s" : "görüntü gürültüsü " + noise.toFixed(1)}`;
 }
+
 
 /* =====================================================================
    SESLİ ALTYAZI — konuşma → metin (Web Speech API) → çeviri → altyazı
@@ -1102,90 +1253,111 @@ function stopListening(silent){
   if(!silent){ syncUI(); caps.hidden = true; }
 }
 
+
 /* =====================================================================
    ARAYÜZ
    ===================================================================== */
+const ENGINE_NAME = { claude:"Claude", google:"Google", mymemory:"MyMemory" };
+const VIEW_ICON = {
+  hud: '<rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 16.5h7"/>',
+  inplace: '<rect x="3" y="4" width="18" height="16" rx="2"/><rect x="7" y="9" width="10" height="5" rx="1"/>'
+};
+function setSeg(id, v){ for(const b of $(id).children) b.setAttribute("aria-pressed", b.dataset.v === v); }
+
 function syncUI(){
-  for(const b of $("dirSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.dir);
-  for(const b of $("viewSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.view);
+  setSeg("dirSeg", S.dir); setSeg("viewSeg", S.view); setSeg("ocrSeg", S.ocr);
+  setSeg("capSeg", S.capMode); setSeg("speechSeg", S.speech);
   $("engine").value = S.engine;
   $("mmField").hidden = S.engine !== "mymemory";
   $("gField").hidden = S.engine !== "google" && S.ocr !== "vision";
   $("cField").hidden = S.engine !== "claude";
-  $("cKey").value = S.cKey;
-  for(const b of $("ocrSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.ocr);
-  $("autoListen").checked = S.autoListen;
-  $("mmEmail").value = S.mmEmail; $("gKey").value = S.gKey;
+  $("cKey").value = S.cKey; $("gKey").value = S.gKey; $("mmEmail").value = S.mmEmail;
+  $("autoRead").checked = S.auto; $("autoListen").checked = S.autoListen;
   $("dual").checked = S.dual; $("showStats").checked = S.stats;
-  for(const b of $("capSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.capMode);
-  for(const b of $("speechSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.speech);
   $("micBtn").setAttribute("aria-pressed", listening);
-  $("micBtn").querySelector(".rec").setAttribute("r", listening ? 3 : 0);
-  $("autoBtn").setAttribute("aria-pressed", S.auto);
-  $("viewBtn").textContent = S.view === "hud" ? "HUD" : "Üstünde";
+  $("viewBtn").setAttribute("aria-pressed", S.view === "inplace");
+  $("viewLbl").textContent = S.view === "hud" ? "Panel" : "Üstünde";
+  $("viewIcon").innerHTML = VIEW_ICON[S.view];
+  $("routeDir").textContent = S.dir === "auto" ? "OTOMATİK" : S.dir === "en-tr" ? "EN → TR" : "TR → EN";
+  $("routeEng").textContent = "· " + ENGINE_NAME[S.engine];
+  statsEl.hidden = !S.stats;
 }
 function setS(k, v){
   S[k] = v; store.set(k, v); syncUI();
-  if(["dir","engine","ocr"].includes(k)){ lastSceneThumb = null; }       // yeniden çevir
+  if(["dir","engine","ocr"].includes(k)){ lastSceneThumb = null; }       // yeniden oku/çevir
   if(lastResult && ["view","dual","stats"].includes(k)) render(lastResult);
   if(k === "dual" && listening) renderCaps();
-  if((k === "speech" || k === "capMode") && listening) startListening();                  // yeni dille yeniden başlat
+  if((k === "speech" || k === "capMode") && listening) startListening();  // yeni ayarla yeniden başlat
 }
 
-$("dirSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("dir", v); });
-$("viewSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("view", v); });
+for(const [seg, key] of [["dirSeg","dir"],["viewSeg","view"],["ocrSeg","ocr"],["capSeg","capMode"],["speechSeg","speech"]]){
+  $(seg).addEventListener("click", e => { const v = e.target.closest("button")?.dataset.v; if(v) setS(key, v); });
+}
+for(const [id, key] of [["autoRead","auto"],["autoListen","autoListen"],["dual","dual"],["showStats","stats"]]){
+  $(id).addEventListener("change", e => setS(key, e.target.checked));
+}
 $("engine").addEventListener("change", e => setS("engine", e.target.value));
 $("mmEmail").addEventListener("change", e => setS("mmEmail", e.target.value.trim()));
 $("gKey").addEventListener("change", e => setS("gKey", e.target.value.trim()));
 $("cKey").addEventListener("change", e => setS("cKey", e.target.value.trim()));
-$("dual").addEventListener("change", e => setS("dual", e.target.checked));
-$("showStats").addEventListener("change", e => setS("stats", e.target.checked));
-$("ocrSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("ocr", v); });
-$("autoListen").addEventListener("change", e => setS("autoListen", e.target.checked));
-$("capSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("capMode", v); });
-$("speechSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("speech", v); });
-$("micBtn").addEventListener("click", () => { listening ? stopListening() : startListening(); });
-$("autoBtn").addEventListener("click", () => setS("auto", !S.auto));
+
+$("micBtn").addEventListener("click", () => {
+  if(listening){ stopListening(); toast("Sesli altyazı kapalı"); }
+  else if(startListening()) toast("Dinleniyor");
+});
 $("viewBtn").addEventListener("click", () => setS("view", S.view === "hud" ? "inplace" : "hud"));
 $("openSheet").addEventListener("click", () => { $("sheet").hidden = false; });
+$("route").addEventListener("click", () => { $("sheet").hidden = false; });
 $("closeSheet").addEventListener("click", () => { $("sheet").hidden = true; });
 $("shoot").addEventListener("click", () => {
-  if(!source) return;
+  if(!source || busy) return;
   lastSceneThumb = null;
   runPipeline(source === video ? thumb() : null);
 });
 
-window.addEventListener("resize", () => { placeReticle(); if(lastResult) render(lastResult); });
+window.addEventListener("resize", () => { layout(); if(lastResult) render(lastResult); });
+window.addEventListener("orientationchange", () => setTimeout(layout, 300));
 
 /* ---------- başlangıç ---------- */
 function preloadOCR(){
   const load = $("load");
-  load.textContent = "OCR modeli yükleniyor…";
+  load.textContent = "Yazı tanıma modeli yükleniyor…";
   getWorker(m => {
     if(m.status.includes("loading") || m.status.includes("initializing")){
-      load.textContent = `OCR: ${m.status} ${m.progress ? Math.round(m.progress*100)+"%" : ""}`;
+      load.textContent = `Yazı tanıma modeli: ${m.progress ? Math.round(m.progress*100) + "%" : "hazırlanıyor"}`;
     }
-  }).then(() => { load.textContent = "OCR hazır (İngilizce + Türkçe)."; })
-    .catch(e => { load.textContent = "OCR yüklenemedi: " + e.message; });
+  }).then(() => { load.textContent = "Hazır."; })
+    .catch(e => { load.textContent = "Yazı tanıma yüklenemedi: " + e.message; });
 }
 
-let wakeLock = null;
-async function keepAwake(){ try{ wakeLock = await navigator.wakeLock?.request("screen"); }catch{} }
-document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && source === video) keepAwake(); });
+async function keepAwake(){ try{ await navigator.wakeLock?.request("screen"); }catch{} }
+document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && source) keepAwake(); });
+
+let ticking = 0, statsTick = 0;
+function startLoop(){
+  if(ticking) return;
+  ticking = setInterval(() => {
+    tick();
+    if(S.stats && ++statsTick % 6 === 0) updateStats(lastResult || { items:[], ocrMs:0, trMs:0, totalMs:0, hits:0 });
+  }, CFG.tickMs);
+}
 
 $("start").addEventListener("click", async () => {
   $("introErr").textContent = "";
+  // izin isteyen her şey dokunuşun içinde başlamalı (iPhone kuralı)
+  enableMotion();
   if(S.autoListen && SR) startListening();
   try{
     await startCamera();
     $("intro").hidden = true;
     keepAwake();
-    placeReticle();
-    setStatus("idle","Yazıya tut");
-    setInterval(tick, CFG.tickMs);
+    requestAnimationFrame(layout);
+    setPhase("idle", "Yazıya tut");
+    startLoop();
   }catch(e){
+    stopListening();
     $("introErr").textContent = e.name === "NotAllowedError"
-      ? "Kamera izni verilmedi. Tarayıcı ayarlarından bu siteye kamera izni verin."
+      ? "Kamera izni verilmedi. Tarayıcı ayarlarından bu siteye kamera izni ver."
       : (e.message || "Kamera açılamadı.");
   }
 });
@@ -1193,9 +1365,8 @@ $("start").addEventListener("click", async () => {
 $("audioBtn").addEventListener("click", () => {
   document.body.classList.add("audio-only");
   $("intro").hidden = true;
-  setStatus("idle","Sesli altyazı");
   keepAwake();
-  if(startListening()) setStatus("shown","Dinleniyor");
+  startListening();
 });
 
 $("photoBtn").addEventListener("click", () => $("file").click());
@@ -1205,17 +1376,24 @@ $("file").addEventListener("change", e => {
     source = still; fitMode = "contain";
     video.hidden = true; still.hidden = false;
     $("intro").hidden = true;
-    placeReticle();
+    reticle.hidden = true;
+    layout();
     lastSceneThumb = null;
     runPipeline(null);
   };
   still.src = URL.createObjectURL(f);
 });
 
+/* iPhone Safari'de (ana ekrandan açılmamışsa) tam ekran ipucu */
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+const standalone = window.navigator.standalone || matchMedia("(display-mode: standalone)").matches;
+$("a2hs").hidden = !(isIOS && !standalone);
+
 $("verIntro").textContent = $("verSheet").textContent = "Sürüm " + APP_VERSION;
 syncUI();
+layout();
 if(window.Tesseract) preloadOCR();
-else $("introErr").textContent = "OCR kütüphanesi yüklenemedi. İnternet bağlantısını kontrol edin.";
+else $("introErr").textContent = "Yazı tanıma kütüphanesi yüklenemedi. İnternet bağlantısını kontrol et.";
 </script>
 </body>
 </html>

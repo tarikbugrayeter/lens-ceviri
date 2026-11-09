@@ -57,11 +57,26 @@ button,select,input{font:inherit;color:inherit}
 .icon-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 /* HUD: Rokid ekranının taklidi (tek renk yeşil, 30° alan ≈ ortada küçük pencere) */
-#hud{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 88px);width:min(92vw,520px);max-height:42vh;overflow:auto;padding:14px 16px;border-radius:12px;background:#000000c4;border:1px solid #4dff8f33;font:400 19px/1.35 var(--f-hud);color:var(--hud);text-shadow:0 0 10px #4dff8f55;transition:opacity .3s}
+#dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 88px);width:min(92vw,520px);display:flex;flex-direction:column;gap:8px;pointer-events:none}
+#dock>*{pointer-events:auto}
+#hud{max-height:34vh;overflow:auto;padding:14px 16px;border-radius:12px;background:#000000c4;border:1px solid #4dff8f33;font:400 19px/1.35 var(--f-hud);color:var(--hud);text-shadow:0 0 10px #4dff8f55;transition:opacity .3s}
 #hud.stale{opacity:.45}
 #hud .item+.item{margin-top:10px;padding-top:10px;border-top:1px dashed #4dff8f33}
 #hud .src{font:400 12px/1.35 var(--f-mono);color:var(--hud-dim);margin-top:3px;text-shadow:none}
 #hud .empty{font-size:15px;color:var(--hud-dim)}
+/* sesli altyazı: konuşma → metin → çeviri */
+#caps{padding:10px 14px;border-radius:12px;background:#000000d0;border:1px solid #4dff8f33;text-align:center;font:700 20px/1.3 var(--f-hud);color:var(--hud);text-shadow:0 0 10px #4dff8f55}
+#caps .cap{transition:opacity .3s}
+#caps .cap.old{opacity:.5;font-size:16px}
+#caps .cap+.cap{margin-top:6px}
+#caps .src{font:400 12px/1.35 var(--f-mono);color:var(--hud-dim);text-shadow:none;margin-top:2px}
+#caps .interim{font:400 14px/1.35 var(--f-mono);color:var(--hud-dim);font-style:italic;text-shadow:none;margin-top:6px}
+#caps .wait{opacity:.6}
+#caps .note{font:400 14px/1.4 var(--f-ui);color:var(--hud-dim);text-shadow:none}
+.pill svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8}
+.pill[aria-pressed="true"] .rec{fill:var(--bad);stroke:none}
+#audioBtn{justify-content:center;border-radius:14px;height:46px}
+body.audio-only #hud,body.audio-only #shoot,body.audio-only #autoBtn,body.audio-only #viewBtn,body.audio-only #reticle{display:none}
 #hud .lang{font:500 10px/1 var(--f-mono);letter-spacing:.08em;border:1px solid var(--hud-dim);border-radius:4px;padding:2px 4px;margin-right:6px;vertical-align:2px}
 
 /* alt kontrol çubuğu */
@@ -122,12 +137,18 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
 
 <div id="stats" hidden></div>
 
-<div id="hud" role="status" aria-live="polite"><div class="empty">Telefonu bir yazıya tut ve sabit bekle.</div></div>
+<div id="dock">
+  <div id="hud" role="status" aria-live="polite"><div class="empty">Telefonu bir yazıya tut ve sabit bekle.</div></div>
+  <div id="caps" aria-live="polite" hidden></div>
+</div>
 
 <div id="bar">
   <button class="pill" id="autoBtn" aria-pressed="true">Otomatik</button>
   <button id="shoot" aria-label="Şimdi çevir"></button>
   <button class="pill" id="viewBtn">HUD</button>
+  <button class="pill" id="micBtn" aria-pressed="false" aria-label="Sesli altyazı">
+    <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><circle class="rec" cx="19" cy="5" r="0"/></svg>Ses
+  </button>
 </div>
 
 <div id="sheet" hidden role="dialog" aria-labelledby="sheetTitle">
@@ -151,6 +172,15 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
       <button data-v="inplace">Yazının üstünde</button>
     </div>
     <p class="hint">HUD, Rokid gibi şeffaf gözlüklerdeki alt yazıyı taklit eder. "Yazının üstünde", Quest gibi kameralı gözlüklerdeki yerine yazmayı taklit eder.</p>
+  </div>
+
+  <div class="field">
+    <span class="lbl">Sesli altyazı</span>
+    <div class="seg" id="speechSeg">
+      <button data-v="en">İngilizce → Türkçe</button>
+      <button data-v="tr">Türkçe → İngilizce</button>
+    </div>
+    <p class="hint">Duyulan konuşma yazıya çevrilir, sonra çevirisi altyazı olarak gösterilir. Video başka bir cihazda (TV, bilgisayar) oynarken en iyi sonucu verir; aynı telefonda oynayan ses, telefonun yankı engelleme özelliği yüzünden zayıf duyulabilir.</p>
   </div>
 
   <div class="field">
@@ -187,9 +217,11 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
       <li>Kamera görüntüsü sürekli izlenir.</li>
       <li>Görüntü durunca bakış alanındaki yazı okunur.</li>
       <li>Metin çevrilip gözlük ekranı gibi gösterilir.</li>
+      <li>Ses düğmesi açıksa duyulan konuşma da altyazıya çevrilir.</li>
     </ol>
     <button id="start">Kamerayı aç</button>
     <button id="photoBtn">Fotoğrafla dene</button>
+    <button id="audioBtn" class="pill">Sadece sesli altyazı (kamerasız)</button>
     <input type="file" id="file" accept="image/*" capture="environment" hidden>
     <div id="load"></div>
     <div id="introErr" role="alert"></div>
@@ -231,7 +263,8 @@ const S = {
   gKey: store.get("gKey",""),
   dual: store.get("dual", true),
   stats: store.get("stats", false),
-  auto: store.get("auto", true)
+  auto: store.get("auto", true),
+  speech: store.get("speech", "en")
 };
 
 /* ---------- DOM ---------- */
@@ -609,6 +642,90 @@ function updateStats(res){
 }
 
 /* =====================================================================
+   SESLİ ALTYAZI — konuşma → metin (Web Speech API) → çeviri → altyazı
+   Gözlükte: mikrofon dizisi + cihaz üzerinde/bulutta konuşma tanıma.
+   ===================================================================== */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const caps = $("caps");
+let rec = null, listening = false, capLines = [], interimText = "", lastFinal = "", restartTimer = 0;
+
+function speechRoute(){ return S.speech === "tr" ? ["tr","en","tr-TR"] : ["en","tr","en-US"]; }
+
+function renderCaps(note){
+  caps.hidden = !listening && !note;
+  if(note){ caps.innerHTML = `<div class="note">${esc(note)}</div>`; return; }
+  const rows = capLines.map((c, i) => {
+    const old = i < capLines.length - 1 ? " old" : "";
+    const main = c.err ? `<span class="wait">${esc(c.err)}</span>`
+               : c.out ? esc(c.out) : `<span class="wait">${esc(c.src)}</span>`;
+    const src = S.dual && c.out ? `<div class="src">${esc(c.src)}</div>` : "";
+    return `<div class="cap${old}">${main}${src}</div>`;
+  }).join("");
+  const interim = interimText ? `<div class="interim">${esc(interimText)}…</div>` : "";
+  caps.innerHTML = rows || interim ? rows + interim : `<div class="note">Dinliyorum…</div>`;
+}
+
+function addCaption(text){
+  if(!text || text === lastFinal) return;           // bazı Android sürümleri aynı sonucu iki kez verir
+  lastFinal = text;
+  const [from, to] = speechRoute();
+  const item = { src:text, out:null, err:null };
+  capLines.push(item);
+  if(capLines.length > 3) capLines.shift();
+  renderCaps();
+  const t0 = performance.now();
+  translate(text, from, to)
+    .then(r => { item.out = r.text; if(S.stats) statsEl.innerHTML = `Ses çevirisi ${((performance.now()-t0)/1000).toFixed(2)} s`; })
+    .catch(e => { item.err = e.message || "Çeviri hatası"; })
+    .finally(renderCaps);
+}
+
+function startListening(){
+  if(!SR){ renderCaps("Bu tarayıcı konuşma tanımayı desteklemiyor. Android'de Chrome, iPhone'da Safari kullanın."); return false; }
+  stopListening(true);
+  rec = new SR();
+  rec.lang = speechRoute()[2];
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  rec.onresult = e => {
+    let interim = "";
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      const r = e.results[i], t = r[0].transcript.trim();
+      if(r.isFinal) addCaption(t); else interim += t + " ";
+    }
+    interimText = interim.trim();
+    renderCaps();
+  };
+  rec.onerror = e => {
+    if(e.error === "not-allowed" || e.error === "service-not-allowed"){
+      listening = false; syncUI();
+      renderCaps("Mikrofon izni verilmedi. Tarayıcı ayarlarından bu siteye mikrofon izni verin.");
+    }else if(e.error === "network"){
+      renderCaps("Konuşma tanıma için internet bağlantısı gerekiyor.");
+    }
+    // "no-speech" ve "aborted" normal: onend yeniden başlatır
+  };
+  // tarayıcı sessizlikte tanımayı kapatır; dinleme açıksa kendiliğinden yeniden başlat
+  rec.onend = () => {
+    interimText = "";
+    if(listening){ clearTimeout(restartTimer); restartTimer = setTimeout(() => { try{ rec.start(); }catch{} }, 250); }
+  };
+  try{ rec.start(); }catch(e){ renderCaps(e.message); return false; }
+  listening = true; capLines = []; lastFinal = "";
+  syncUI(); renderCaps();
+  return true;
+}
+
+function stopListening(silent){
+  listening = false;
+  clearTimeout(restartTimer);
+  if(rec){ rec.onend = null; try{ rec.abort(); }catch{} rec = null; }
+  interimText = "";
+  if(!silent){ syncUI(); caps.hidden = true; }
+}
+
+/* =====================================================================
    ARAYÜZ
    ===================================================================== */
 function syncUI(){
@@ -619,6 +736,9 @@ function syncUI(){
   $("gField").hidden = S.engine !== "google";
   $("mmEmail").value = S.mmEmail; $("gKey").value = S.gKey;
   $("dual").checked = S.dual; $("showStats").checked = S.stats;
+  for(const b of $("speechSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.speech);
+  $("micBtn").setAttribute("aria-pressed", listening);
+  $("micBtn").querySelector(".rec").setAttribute("r", listening ? 3 : 0);
   $("autoBtn").setAttribute("aria-pressed", S.auto);
   $("viewBtn").textContent = S.view === "hud" ? "HUD" : "Üstünde";
 }
@@ -626,6 +746,8 @@ function setS(k, v){
   S[k] = v; store.set(k, v); syncUI();
   if(["dir","engine"].includes(k)){ lastSceneThumb = null; }       // yeniden çevir
   if(lastResult && ["view","dual","stats"].includes(k)) render(lastResult);
+  if(k === "dual" && listening) renderCaps();
+  if(k === "speech" && listening) startListening();                  // yeni dille yeniden başlat
 }
 
 $("dirSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("dir", v); });
@@ -635,6 +757,8 @@ $("mmEmail").addEventListener("change", e => setS("mmEmail", e.target.value.trim
 $("gKey").addEventListener("change", e => setS("gKey", e.target.value.trim()));
 $("dual").addEventListener("change", e => setS("dual", e.target.checked));
 $("showStats").addEventListener("change", e => setS("stats", e.target.checked));
+$("speechSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("speech", v); });
+$("micBtn").addEventListener("click", () => { listening ? stopListening() : startListening(); });
 $("autoBtn").addEventListener("click", () => setS("auto", !S.auto));
 $("viewBtn").addEventListener("click", () => setS("view", S.view === "hud" ? "inplace" : "hud"));
 $("openSheet").addEventListener("click", () => { $("sheet").hidden = false; });
@@ -677,6 +801,14 @@ $("start").addEventListener("click", async () => {
       ? "Kamera izni verilmedi. Tarayıcı ayarlarından bu siteye kamera izni verin."
       : (e.message || "Kamera açılamadı.");
   }
+});
+
+$("audioBtn").addEventListener("click", () => {
+  document.body.classList.add("audio-only");
+  $("intro").hidden = true;
+  setStatus("idle","Sesli altyazı");
+  keepAwake();
+  if(startListening()) setStatus("shown","Dinleniyor");
 });
 
 $("photoBtn").addEventListener("click", () => $("file").click());

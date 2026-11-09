@@ -3,8 +3,24 @@
 AR gözlükte yapılacak otomatik yazı çevirisinin telefonda çalışan provası.
 Kamerayı bir yazıya tutup telefonu sabit tuttuğunda, bakış alanındaki yazı
 okunur, çevrilir ve gözlük ekranındaki gibi yeşil alt yazı olarak gösterilir.
+**Ses** düğmesi açıkken duyulan İngilizce konuşma da yazıya dökülüp Türkçe altyazı olarak gösterilir.
 
 Tek dosya: `index.html`. Derleme, paket kurulumu yok.
+
+Canlı adres: https://tarikbugrayeter.github.io/lens-ceviri/
+
+## Sesli altyazı
+
+```
+mikrofon → konuşma tanıma (Web Speech API) → cümle bitince çeviri → altyazı
+```
+
+- Kamerayla birlikte **Ses** düğmesinden ya da girişteki **Sadece sesli altyazı** ile kamerasız çalışır.
+- Konuşma devam ederken o ana kadar duyulan İngilizce soluk yazıyla görünür; cümle bitince Türkçesi yeşil altyazı olur. Son 3 cümle ekranda kalır.
+- Dil Ayarlar → Sesli altyazı'dan değişir (EN→TR veya TR→EN).
+- Android Chrome'da konuşma tanıma Google sunucularında yapılır, internet gerekir. Tarayıcı sessizlikte dinlemeyi kapatır; uygulama kendiliğinden yeniden başlatır.
+- **Netflix gibi videolar:** Video TV'de ya da bilgisayarda oynarken telefonu yakına koy. Video aynı telefonda oynuyorsa, telefonun yankı engelleme özelliği hoparlör sesini bastırabilir ve tanıma zayıflar. Videonun kendi İngilizce altyazısı varsa, kamerayla onu okumak da bir seçenek.
+- Gözlükte bu kısım gözlüğün mikrofon dizisi + konuşma tanıma servisiyle (cihazda ya da bulutta) değişir; çeviri ve altyazı mantığı aynı kalır.
 
 ## Çalıştırma
 

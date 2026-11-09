@@ -197,9 +197,16 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
   <div class="field">
     <label for="engine">Çeviri motoru</label>
     <select id="engine">
-      <option value="mymemory">MyMemory (ücretsiz, anahtarsız)</option>
-      <option value="google">Google Cloud Translation (API anahtarı)</option>
+      <option value="claude">Claude (en doğal, bağlamı anlar)</option>
+      <option value="google">Google Cloud Translation (hızlı)</option>
+      <option value="mymemory">MyMemory (ücretsiz, düşük kalite)</option>
     </select>
+    <p class="hint">Konuşma çevirisi için Claude önerilir: önceki cümleleri okuyarak yarım cümleleri ve yanlış duyulan kelimeleri toparlar. MyMemory anahtarsız ama özellikle konuşmada sık sık saçma çeviriler üretir.</p>
+  </div>
+  <div class="field" id="cField" hidden>
+    <label for="cKey">Claude API anahtarı</label>
+    <input type="password" id="cKey" placeholder="sk-ant-…" autocomplete="off">
+    <p class="hint">console.anthropic.com adresinden alınır. Anahtar yalnızca bu tarayıcıda saklanır; gerçek üründe isteği kendi sunucunuz üzerinden yapın.</p>
   </div>
   <div class="field" id="mmField">
     <label for="mmEmail">E-posta (isteğe bağlı)</label>
@@ -275,6 +282,7 @@ const S = {
   engine: store.get("engine","mymemory"),
   mmEmail: store.get("mmEmail",""),
   gKey: store.get("gKey",""),
+  cKey: store.get("cKey",""),
   dual: store.get("dual", true),
   stats: store.get("stats", false),
   auto: store.get("auto", true),
@@ -647,12 +655,69 @@ function routeFor(text){
    ===================================================================== */
 const tCache = new Map();
 
-async function translate(text, from, to){
-  const key = `${from}>${to}:${text}`;
-  if(tCache.has(key)) return { text: tCache.get(key), cached:true };
-  const out = S.engine === "google" ? await translateGoogle(text, from, to) : await translateMyMemory(text, from, to);
-  tCache.set(key, out);
+/* opts: { context:[önceki cümleler], speech:bool, onPartial(text), signal }
+   Bağlamsız çağrılar (OCR) önbelleğe alınır; bağlamlı konuşma çevirileri alınmaz. */
+async function translate(text, from, to, opts = {}){
+  const useCache = !(opts.context && opts.context.length);
+  const key = `${S.engine}|${from}>${to}:${text}`;
+  if(useCache && tCache.has(key)){ const t = tCache.get(key); opts.onPartial?.(t); return { text:t, cached:true }; }
+  let out;
+  if(S.engine === "claude") out = await translateClaude(text, from, to, opts);
+  else{
+    out = S.engine === "google" ? await translateGoogle(text, from, to) : await translateMyMemory(text, from, to);
+    opts.onPartial?.(out);
+  }
+  if(useCache) tCache.set(key, out);
   return { text: out, cached:false };
+}
+
+/* Claude: bağlamı okuyarak çevirir, yarım cümleleri ve tanıma hatalarını toparlar.
+   Yanıtı akış halinde alır, böylece ilk kelimeler hemen ekrana gelir. */
+const CLAUDE_MODEL = "claude-haiku-5-5";   // hızlı ve ucuz; daha yüksek kalite için daha büyük bir model yazılabilir
+async function translateClaude(text, from, to, { context = [], speech = false, onPartial, signal } = {}){
+  if(!S.cKey) throw new Error("Claude API anahtarı girilmedi (Ayarlar).");
+  const L = { en:"English", tr:"Turkish" };
+  const system =
+`You are a real-time subtitle translator from ${L[from]} to ${L[to]}.
+Output ONLY the ${L[to]} translation of the text inside <new>. No quotes, notes, explanations or the original text.
+${speech
+? `The source is live automatic speech recognition from a video or a conversation. It may have no punctuation, misheard words, or be a fragment of a sentence that continues. Use <context> (earlier lines, already translated) only to understand meaning, names and gender; do not translate it again. Translate the intended meaning the way a professional subtitler would: short, natural, spoken ${L[to]}. If <new> is a fragment, translate it as a fragment.`
+: `The source was read by OCR from a sign, screen, menu or document and may contain small recognition errors. Translate the intended meaning naturally and concisely.`}
+Keep names, brands and code identifiers unchanged.`;
+  const user = (context.length ? `<context>\n${context.join("\n")}\n</context>\n` : "") + `<new>${text}</new>`;
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST", signal,
+    headers:{
+      "content-type":"application/json",
+      "x-api-key": S.cKey,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"     // tarayıcıdan doğrudan çağrı (prototip için)
+    },
+    body: JSON.stringify({ model:CLAUDE_MODEL, max_tokens:400, system, stream:!!onPartial,
+                           messages:[{ role:"user", content:user }] })
+  });
+  if(!r.ok){
+    let m = `Claude HTTP ${r.status}`;
+    try{ const j = await r.json(); m = j.error?.message || m; }catch{}
+    throw new Error(m);
+  }
+  if(!onPartial){ const j = await r.json(); return (j.content || []).map(c => c.text || "").join("").trim(); }
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", out = "";
+  for(;;){
+    const { value, done } = await reader.read();
+    if(done) break;
+    buf += dec.decode(value, { stream:true });
+    let i;
+    while((i = buf.indexOf("\n")) >= 0){
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if(!line.startsWith("data:")) continue;
+      let ev; try{ ev = JSON.parse(line.slice(5)); }catch{ continue; }
+      if(ev.type === "content_block_delta" && ev.delta?.type === "text_delta"){ out += ev.delta.text; onPartial(out.trim()); }
+      else if(ev.type === "error") throw new Error(ev.error?.message || "Claude akış hatası");
+    }
+  }
+  return out.trim();
 }
 
 async function translateMyMemory(text, from, to){
@@ -829,85 +894,149 @@ function updateStats(res){
    ===================================================================== */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const caps = $("caps");
-let rec = null, listening = false, capLines = [], interimText = "", lastFinal = "", restartTimer = 0;
-let interimOut = "", interimReqAt = 0, interimReqText = "", interimSeq = 0;
+let rec = null, listening = false, capLines = [], restartTimer = 0;
+let seg = null, pendingText = "", liveOut = "", liveCtl = null, liveReqAt = 0, liveReqText = "", liveTimer = 0, ctxSrc = [];
 
-/* Konuşma sürerken birikmiş metni belirli aralıklarla çevir; cümle bitince kesin çeviri yerini alır */
-function maybeTranslateInterim(t){
-  if(!t || t.split(/\s+/).length < 3 || t === interimReqText) return;
-  const gap = S.engine === "google" ? CFG.interimMs * 0.6 : CFG.interimMs * 1.4;   // ücretsiz motorda kotayı koru
-  const now = performance.now();
-  if(now - interimReqAt < gap) return;
-  interimReqAt = now; interimReqText = t;
-  const seq = ++interimSeq, [from, to] = speechRoute();
-  translate(t, from, to).then(r => {
-    if(seq === interimSeq && interimText){ interimOut = r.text; renderCaps(); }
-  }).catch(() => {});
+/* ---------------------------------------------------------------------
+   KONUŞMA BÖLÜCÜ
+   Tarayıcının konuşma tanıyıcısı "cümle bitti" demeyi çok geç yapar
+   (özellikle iPhone'da). Biz beklemeyiz:
+   • kısa duraklama (~0,6 sn) → o ana kadarki parçayı hemen çevir
+   • konuşma uzarsa → kararlı hale gelmiş ilk kelimeleri, mümkünse
+     virgül ya da "and/but/so…" gibi bir bağlaçtan bölüp çevir
+   Tanıyıcı metni bütün olarak verdiği için kaç kelimenin çevrildiğini sayarız.
+   --------------------------------------------------------------------- */
+const BREAK_WORDS = new Set("and but so because then which when while or if although however ve ama fakat çünkü sonra eğer ancak".split(" "));
+function createSegmenter({ onCommit, onPause, pauseMs = 600, maxWords = 9, holdWords = 2 }){
+  let committed = 0, prev = [], timer = 0;
+  const words = t => t.split(/\s+/).filter(Boolean);
+  const commitTo = (all, end) => {
+    const chunk = all.slice(committed, end).join(" ");
+    committed = end;
+    if(chunk) onCommit(chunk);
+  };
+  return {
+    update(fullText, isFinal){
+      const all = words(fullText);
+      if(all.length < committed) committed = all.length;         // tanıyıcı metni kısalttıysa
+      clearTimeout(timer);
+      if(isFinal){ commitTo(all, all.length); prev = all; return ""; }
+      if(all.length - committed >= maxWords){
+        // önceki güncellemeyle aynı kalan (artık değişmeyecek) kelimeler
+        let stable = committed;
+        while(stable < all.length - holdWords && prev[stable] === all[stable]) stable++;
+        // tercihen noktalama ya da bağlaçtan böl
+        let cut = stable;
+        for(let i = stable; i > committed + 3; i--){
+          if(/[.,;:!?]$/.test(all[i-1]) || BREAK_WORDS.has((all[i] || "").toLowerCase())){ cut = i; break; }
+        }
+        if(cut - committed >= 4) commitTo(all, cut);
+      }
+      prev = all;
+      const pending = all.slice(committed).join(" ");
+      if(pending) timer = setTimeout(() => { commitTo(all, all.length); onPause?.(); }, pauseMs);
+      return pending;
+    },
+    flush(){ clearTimeout(timer); commitTo(prev, prev.length); },
+    reset(){ clearTimeout(timer); committed = 0; prev = []; }
+  };
 }
 
 function speechRoute(){ return S.speech === "tr" ? ["tr","en","tr-TR"] : ["en","tr","en-US"]; }
 
+/* Konuşma sürerken henüz bölünmemiş kısmın canlı çevirisi (eskisi iptal edilir) */
+function liveGap(){ return S.engine === "mymemory" ? 1500 : S.engine === "google" ? 400 : 550; }
+function maybeTranslateLive(){
+  const t = pendingText;
+  if(!t || t === liveReqText || t.split(/\s+/).length < 2) return;
+  const wait = liveGap() - (performance.now() - liveReqAt);
+  clearTimeout(liveTimer);
+  if(wait > 0){ liveTimer = setTimeout(maybeTranslateLive, wait); return; }   // son hali de çevrilsin
+  liveReqAt = performance.now(); liveReqText = t;
+  liveCtl?.abort();
+  const ctl = liveCtl = new AbortController(), [from, to] = speechRoute();
+  translate(t, from, to, {
+    context: ctxSrc.slice(-3), speech:true, signal: ctl.signal,
+    onPartial: p => { if(liveCtl === ctl && pendingText){ liveOut = p; scheduleCaps(); } }
+  }).then(r => { if(liveCtl === ctl && pendingText){ liveOut = r.text; scheduleCaps(); } }).catch(() => {});
+}
+
+/* Bölücü bir parçayı kesinleştirdi: altyazı satırı ekle, bağlamla çevir */
+function commitChunk(text){
+  clearTimeout(liveTimer); liveCtl?.abort(); liveCtl = null;
+  liveOut = ""; liveReqText = "";
+  const [from, to] = speechRoute();
+  const item = { src:text, out:"", err:null };
+  capLines.push(item);
+  if(capLines.length > 3) capLines.shift();
+  const context = ctxSrc.slice(-3);
+  ctxSrc.push(text); if(ctxSrc.length > 6) ctxSrc.shift();
+  const t0 = performance.now();
+  translate(text, from, to, { context, speech:true, onPartial: p => { item.out = p; scheduleCaps(); } })
+    .then(r => { item.out = r.text; if(S.stats) statsEl.innerHTML = `Ses çevirisi ${((performance.now()-t0)/1000).toFixed(2)} s`; })
+    .catch(e => { item.err = e.message || "Çeviri hatası"; })
+    .finally(scheduleCaps);
+  scheduleCaps();
+}
+
 /* Kamera modunda altyazı yalnızca konuşma gelince görünür, sessizlik sürerse kaybolur.
    Sadece ses modunda ekran boş kalmasın diye "Dinliyorum…" görünür. */
 const CAP_IDLE_MS = 8000;
-let capIdleTimer = 0;
+let capIdleTimer = 0, capsQueued = false;
+function scheduleCaps(){
+  if(capsQueued) return; capsQueued = true;
+  requestAnimationFrame(() => { capsQueued = false; renderCaps(); });
+}
 function renderCaps(note){
   if(note){ caps.hidden = false; caps.innerHTML = `<div class="note">${esc(note)}</div>`; return; }
   const audioOnly = document.body.classList.contains("audio-only");
-  const hasContent = capLines.length > 0 || !!interimText;
+  const hasContent = capLines.length > 0 || !!pendingText;
   caps.hidden = !listening || (!hasContent && !audioOnly);
   if(caps.hidden) return;
   const rows = capLines.map((c, i) => {
-    const old = i < capLines.length - 1 ? " old" : "";
+    const old = i < capLines.length - 1 || pendingText ? " old" : "";
     const main = c.err ? `<span class="wait">${esc(c.err)}</span>`
-               : c.out ? esc(c.out) : `<span class="wait">${esc(c.src)}</span>`;
+               : c.out ? esc(c.out) : `<span class="wait">${esc(c.src)} …</span>`;
     const src = S.dual && c.out ? `<div class="src">${esc(c.src)}</div>` : "";
     return `<div class="cap${old}">${main}${src}</div>`;
   }).join("");
-  const interim = !interimText ? ""
-    : interimOut ? `<div class="cap live">${esc(interimOut)}…</div>${S.dual ? `<div class="interim">${esc(interimText)}</div>` : ""}`
-    : `<div class="interim">${esc(interimText)}…</div>`;
-  caps.innerHTML = hasContent ? rows + interim : `<div class="note">Dinliyorum…</div>`;
+  const live = !pendingText ? ""
+    : liveOut ? `<div class="cap live">${esc(liveOut)}…</div>${S.dual ? `<div class="interim">${esc(pendingText)}</div>` : ""}`
+    : `<div class="interim">${esc(pendingText)}…</div>`;
+  caps.innerHTML = hasContent ? rows + live : `<div class="note">Dinliyorum…</div>`;
   if(hasContent && !audioOnly){
     clearTimeout(capIdleTimer);
-    capIdleTimer = setTimeout(() => { if(!interimText){ capLines = []; renderCaps(); } }, CAP_IDLE_MS);
+    capIdleTimer = setTimeout(() => { if(!pendingText){ capLines = []; renderCaps(); } }, CAP_IDLE_MS);
   }
 }
 
-function addCaption(text){
-  interimSeq++; interimOut = ""; interimReqText = "";                // ara çeviriyi iptal et
-  if(!text || text === lastFinal) return;           // bazı Android sürümleri aynı sonucu iki kez verir
-  lastFinal = text;
-  const [from, to] = speechRoute();
-  const item = { src:text, out:null, err:null };
-  capLines.push(item);
-  if(capLines.length > 3) capLines.shift();
-  renderCaps();
-  const t0 = performance.now();
-  translate(text, from, to)
-    .then(r => { item.out = r.text; if(S.stats) statsEl.innerHTML = `Ses çevirisi ${((performance.now()-t0)/1000).toFixed(2)} s`; })
-    .catch(e => { item.err = e.message || "Çeviri hatası"; })
-    .finally(renderCaps);
+/* Tanıyıcının tüm sonuçlarını tek metne çevir.
+   Bazı Android sürümleri her sonucu öncekini de içerecek şekilde tekrarlar; onları birleştir. */
+function transcriptOf(results){
+  const parts = [];
+  for(let i = 0; i < results.length; i++){
+    const t = results[i][0].transcript.trim();
+    if(!t) continue;
+    if(parts.length && t.startsWith(parts[parts.length-1])) parts[parts.length-1] = t;
+    else parts.push(t);
+  }
+  return parts.join(" ");
 }
 
 function startListening(){
   if(!SR){ renderCaps("Bu tarayıcı konuşma tanımayı desteklemiyor. Android'de Chrome, iPhone'da Safari kullanın."); return false; }
   stopListening(true);
+  seg = createSegmenter({ onCommit: commitChunk, onPause: () => { pendingText = ""; scheduleCaps(); } });
   rec = new SR();
   rec.lang = speechRoute()[2];
   rec.continuous = true;
   rec.interimResults = true;
   rec.maxAlternatives = 1;
   rec.onresult = e => {
-    let interim = "";
-    for(let i = e.resultIndex; i < e.results.length; i++){
-      const r = e.results[i], t = r[0].transcript.trim();
-      if(r.isFinal) addCaption(t); else interim += t + " ";
-    }
-    interimText = interim.trim();
-    if(!interimText){ interimOut = ""; interimSeq++; }
-    else maybeTranslateInterim(interimText);
-    renderCaps();
+    const last = e.results[e.results.length - 1];
+    pendingText = seg.update(transcriptOf(e.results), !!last?.isFinal);
+    if(pendingText) maybeTranslateLive(); else liveOut = "";
+    scheduleCaps();
   };
   rec.onerror = e => {
     if(e.error === "not-allowed" || e.error === "service-not-allowed"){
@@ -918,22 +1047,25 @@ function startListening(){
     }
     // "no-speech" ve "aborted" normal: onend yeniden başlatır
   };
-  // tarayıcı sessizlikte tanımayı kapatır; dinleme açıksa kendiliğinden yeniden başlat
+  // tarayıcı oturumu kapatınca: kalan parçayı çevir, sayaçları sıfırla, yeniden başlat
   rec.onend = () => {
-    interimText = "";
-    if(listening){ clearTimeout(restartTimer); restartTimer = setTimeout(() => { try{ rec.start(); }catch{} }, 250); }
+    seg.flush(); seg.reset(); pendingText = "";
+    scheduleCaps();
+    if(listening){ clearTimeout(restartTimer); restartTimer = setTimeout(() => { try{ rec.start(); }catch{} }, 150); }
   };
   try{ rec.start(); }catch(e){ renderCaps(e.message); return false; }
-  listening = true; capLines = []; lastFinal = "";
+  listening = true; capLines = []; ctxSrc = [];
   syncUI(); renderCaps();
   return true;
 }
 
 function stopListening(silent){
   listening = false;
-  clearTimeout(restartTimer);
+  clearTimeout(restartTimer); clearTimeout(liveTimer);
+  liveCtl?.abort(); liveCtl = null;
   if(rec){ rec.onend = null; try{ rec.abort(); }catch{} rec = null; }
-  interimText = "";
+  seg?.reset();
+  pendingText = ""; liveOut = "";
   if(!silent){ syncUI(); caps.hidden = true; }
 }
 
@@ -946,6 +1078,8 @@ function syncUI(){
   $("engine").value = S.engine;
   $("mmField").hidden = S.engine !== "mymemory";
   $("gField").hidden = S.engine !== "google" && S.ocr !== "vision";
+  $("cField").hidden = S.engine !== "claude";
+  $("cKey").value = S.cKey;
   for(const b of $("ocrSeg").children) b.setAttribute("aria-pressed", b.dataset.v === S.ocr);
   $("autoListen").checked = S.autoListen;
   $("mmEmail").value = S.mmEmail; $("gKey").value = S.gKey;
@@ -969,6 +1103,7 @@ $("viewSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(
 $("engine").addEventListener("change", e => setS("engine", e.target.value));
 $("mmEmail").addEventListener("change", e => setS("mmEmail", e.target.value.trim()));
 $("gKey").addEventListener("change", e => setS("gKey", e.target.value.trim()));
+$("cKey").addEventListener("change", e => setS("cKey", e.target.value.trim()));
 $("dual").addEventListener("change", e => setS("dual", e.target.checked));
 $("showStats").addEventListener("change", e => setS("stats", e.target.checked));
 $("ocrSeg").addEventListener("click", e => { const v = e.target.dataset?.v; if(v) setS("ocr", v); });

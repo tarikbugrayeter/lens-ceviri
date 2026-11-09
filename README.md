@@ -12,53 +12,16 @@ Canlı adres: https://tarikbugrayeter.github.io/lens-ceviri/
 ## Sesli altyazı
 
 ```
-mikrofon → konuşma tanıma (Web Speech API) → cümle bitince çeviri → altyazı
+mikrofon → konuşma tanıma (Web Speech API) → bölücü → bağlamlı çeviri (akış) → altyazı
 ```
 
 - Kamera açılınca dinleme de kendiliğinden başlar (Ayarlar'dan kapatılabilir). Altyazı yalnızca konuşma duyulunca belirir, 8 sn sessizlikte kaybolur. **Ses** düğmesi elle açıp kapatır; girişteki **Sadece sesli altyazı** kamerasız çalışır.
-- Konuşma devam ederken o ana kadar duyulan İngilizce soluk yazıyla görünür; cümle bitince Türkçesi yeşil altyazı olur. Son 3 cümle ekranda kalır.
+- **Cümle sonu beklenmez.** Tarayıcının tanıyıcısı "cümle bitti" demeyi çok geç yapar (özellikle iPhone'da). Uygulama kendi böler: ~0,6 sn duraklamada o ana kadarki parça, konuşma uzarsa ~9 kelimede (mümkünse virgül ya da and/but/so gibi bir bağlaçtan) ilk kısım hemen çevrilir. Henüz bölünmemiş kısmın canlı çevirisi de ekranda akar. Kod: `createSegmenter()`.
+- **Çeviri motoru:** Konuşma için **Claude** önerilir. Önceki 3 cümleyi bağlam olarak okur; noktalamasız, yarım ya da yanlış duyulmuş parçaları altyazı dilinde toparlar. Yanıt akış halinde gelir, ilk kelimeler hemen görünür. Anahtar: console.anthropic.com. **Google** hızlıdır ama her parçayı bağlamsız çevirir. **MyMemory** anahtarsızdır ama konuşmada kalitesi düşüktür.
 - Dil Ayarlar → Sesli altyazı'dan değişir (EN→TR veya TR→EN).
-- Android Chrome'da konuşma tanıma Google sunucularında yapılır, internet gerekir. Tarayıcı sessizlikte dinlemeyi kapatır; uygulama kendiliğinden yeniden başlatır.
-- **Netflix gibi videolar:** Video TV'de ya da bilgisayarda oynarken telefonu yakına koy. Video aynı telefonda oynuyorsa, telefonun yankı engelleme özelliği hoparlör sesini bastırabilir ve tanıma zayıflar. Videonun kendi İngilizce altyazısı varsa, kamerayla onu okumak da bir seçenek.
-- Gözlükte bu kısım gözlüğün mikrofon dizisi + konuşma tanıma servisiyle (cihazda ya da bulutta) değişir; çeviri ve altyazı mantığı aynı kalır.
-
-## Çalıştırma
-
-Tarayıcılar kameraya yalnızca **HTTPS** üzerinden (ya da bilgisayarda `localhost`'ta) izin verir.
-
-**Telefonda (en kolay yol):**
-1. https://app.netlify.com/drop adresine git.
-2. `ar-ceviri` klasörünü sürükleyip bırak. Birkaç saniyede `https://…netlify.app` adresi verir.
-3. Bu adresi telefonda Chrome'da (Android) ya da Safari'de (iPhone) aç, **Kamerayı aç**'a bas.
-
-GitHub Pages de olur: dosyayı bir repoya koy, Settings → Pages'i aç.
-
-**Bilgisayarda (webcam ile):**
-```bash
-cd ar-ceviri
-python3 -m http.server 8000
-# tarayıcıda: http://localhost:8000
-```
-Not: Telefonu aynı ağdan `http://192.168.x.x:8000` ile bağlarsan kamera açılmaz (HTTPS değil).
-
-İlk açılışta OCR modeli (İngilizce + Türkçe, birkaç MB) indirilir; sonra tarayıcı önbelleğinden gelir.
-
-## Nasıl çalışıyor
-
-```
-kamera → sabitlik → sahne önbelleği → OCR → dil tespiti → çeviri (+önbellek) → çizim
-```
-
-| Adım | Ne yapıyor | Dosyadaki yeri |
-|---|---|---|
-| Sabitlik | Her 150 ms'de bakış alanının 48×36 gri küçük resmi alınır, önceki kareyle karşılaştırılır. ~0,65 s fark küçük kalırsa "okuyor" sayılır. | `tick()` |
-| Sahne önbelleği | Görüntü son çevrilen sahneye benziyorsa OCR tekrar çalışmaz, eski sonuç geri gelir. Başını çevirip geri dönünce çeviri anında görünür. | `lastSceneThumb` |
-| OCR | Üç karenin en neti seçilir, bakış alanı büyütülür. Tesseract için koyu zeminli ekranlar ters çevrilir ve kontrast gerilir. İstenirse Google Vision kullanılır. Emoji, ikon ve yansımadan gelen çöp kelimeler atılır. | `captureSharpest()`, `normalizeGray()`, `isRealWord()` |
-| Dil tespiti | Türkçe harfler, sık kelimeler ve ekler üzerinden kural tabanlı. | `detectLang()` |
-| Çeviri | MyMemory (anahtarsız) ya da Google Cloud (anahtarlı). Aynı metin ikinci kez çevrilmez. | `translate()` |
-| Çizim | **HUD**: Rokid gibi şeffaf gözlüklerdeki alt yazı. **Yazının üstünde**: Quest gibi kameralı gözlüklerdeki yerine yazma. | `render()` |
-
-Ayarlanabilir eşikler dosyanın başındaki `CFG` nesnesinde.
+- Android Chrome'da konuşma tanıma Google sunucularında yapılır, internet gerekir.
+- **Netflix gibi videolar:** Video TV'de ya da bilgisayarda oynarken telefonu yakına koy. Video aynı telefonda oynuyorsa telefonun yankı engelleme özelliği hoparlör sesini bastırabilir.
+- Gözlükte bu kısım gözlüğün mikrofon dizisi + konuşma tanıma servisiyle değişir; bölücü, çeviri ve altyazı mantığı aynı kalır.
 
 ## Hız
 

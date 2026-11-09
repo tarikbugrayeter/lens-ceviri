@@ -117,6 +117,7 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
 #start{height:52px;border-radius:14px;border:0;background:var(--hud);color:#03130a;font-weight:700;font-size:16px;cursor:pointer}
 #photoBtn{height:46px;border-radius:14px;border:1px solid var(--line);background:transparent;cursor:pointer}
 #introErr{color:var(--bad);font-size:14px}
+.ver{font:500 11px/1 var(--f-mono);letter-spacing:.06em;color:var(--dim);text-align:center;margin-top:10px}
 #load{font:400 12px var(--f-mono);color:var(--dim)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -226,6 +227,7 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
   </div>
 
   <button id="closeSheet">Tamam</button>
+  <div class="ver" id="verSheet"></div>
 </div>
 
 <div id="intro">
@@ -244,6 +246,7 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
     <input type="file" id="file" accept="image/*" capture="environment" hidden>
     <div id="load"></div>
     <div id="introErr" role="alert"></div>
+    <div class="ver" id="verIntro"></div>
   </div>
 </div>
 
@@ -257,6 +260,9 @@ select,input[type=text],input[type=password],input[type=email]{width:100%;paddin
    Gözlüğe taşırken değişecek kısımlar yalnızca "KAYNAK" ve "ÇİZİM"
    bölümleridir; ortadaki mantık aynen kalır.
    ===================================================================== */
+
+/* Her yayında artır: telefonda hangi sürümün açık olduğunu görmek için */
+const APP_VERSION = "v0.5 · 09.11.2026 16:50 · Claude çeviri + konuşma bölücü";
 
 const CFG = {
   tickMs: 100,            // hareket kontrol aralığı
@@ -1177,6 +1183,7 @@ $("file").addEventListener("change", e => {
   still.src = URL.createObjectURL(f);
 });
 
+$("verIntro").textContent = $("verSheet").textContent = "Sürüm " + APP_VERSION;
 syncUI();
 if(window.Tesseract) preloadOCR();
 else $("introErr").textContent = "OCR kütüphanesi yüklenemedi. İnternet bağlantısını kontrol edin.";
